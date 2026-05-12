@@ -1,0 +1,30 @@
+services:
+  backend:
+    image: ghcr.io/eazy-drive-development/snapcar-application-tracker/backend:main
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      LOGIN_USERNAME: ${LOGIN_USERNAME}
+      LOGIN_PASSWORD: ${LOGIN_PASSWORD}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      SALES_REPORT_TO: ${SALES_REPORT_TO}
+      SALES_REPORT_CRON: ${SALES_REPORT_CRON}
+    restart: unless-stopped
+
+  frontend:
+    image: ghcr.io/eazy-drive-development/snapcar-application-tracker/frontend:main
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
