@@ -25,7 +25,7 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.repository_owner }}
-          password: ${{ secrets.VPS_GITHUB_PAT }}
+          password: ${{ github.token }}
 
       - name: Build and push backend image
         uses: docker/build-push-action@v5
