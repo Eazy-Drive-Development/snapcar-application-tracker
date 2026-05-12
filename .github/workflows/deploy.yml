@@ -63,7 +63,7 @@ jobs:
           key: ${{ secrets.PROD_SERVER_SSH_KEY }}
           port: 22
           source: docker-compose.stage.yml
-          target: /home/eazydrive/stage
+          target: /home/eazydrive/snapcar-tracker/stage
           timeout: 30s
 
       - name: Deploy staging containers
@@ -73,7 +73,7 @@ jobs:
           username: ${{ secrets.PROD_SERVER_USER }}
           key: ${{ secrets.PROD_SERVER_SSH_KEY }}
           script: |
-            cd /home/eazydrive/stage
+            cd /home/eazydrive/snapcar-tracker/stage
             echo "${{ secrets.VPS_GITHUB_PAT }}" | docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
             docker compose -f docker-compose.stage.yml --env-file .env.stage pull
             docker compose -f docker-compose.stage.yml --env-file .env.stage up -d
@@ -95,7 +95,7 @@ jobs:
           key: ${{ secrets.PROD_SERVER_SSH_KEY }}
           port: 22
           source: docker-compose.prod.yml
-          target: /home/eazydrive/prod
+          target: /home/eazydrive/snapcar-tracker/prod
           timeout: 30s
 
       - name: Deploy production containers
@@ -105,7 +105,7 @@ jobs:
           username: ${{ secrets.PROD_SERVER_USER }}
           key: ${{ secrets.PROD_SERVER_SSH_KEY }}
           script: |
-            cd /home/eazydrive/prod
+            cd /home/eazydrive/snapcar-tracker/prod
             echo "${{ secrets.VPS_GITHUB_PAT }}" | docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
             docker compose -f docker-compose.prod.yml --env-file .env.prod pull
             docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
