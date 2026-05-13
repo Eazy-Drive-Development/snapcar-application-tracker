@@ -1,8 +1,8 @@
 services:
   backend:
     image: ghcr.io/eazy-drive-development/snapcar-application-tracker/backend:main
-    ports:
-      - "4000:4000"
+    expose:
+      - "4000"
     environment:
       NODE_ENV: production
       PORT: 4000
@@ -24,7 +24,7 @@ services:
   frontend:
     image: ghcr.io/eazy-drive-development/snapcar-application-tracker/frontend:main
     ports:
-      - "80:80"
+      - "8082:80"
     depends_on:
       - backend
     restart: unless-stopped
