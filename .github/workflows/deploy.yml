@@ -72,9 +72,11 @@ jobs:
           host: ${{ secrets.PROD_SERVER_HOST }}
           username: ${{ secrets.PROD_SERVER_USER }}
           key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+          script_stop: true
           script: |
+            set -e
             cd /home/eazydrive/snapcar-tracker/stage
-            echo "${{ secrets.VPS_GITHUB_PAT }}" | docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
+            echo "${{ secrets.VPS_GITHUB_PAT }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
             docker compose -f docker-compose.stage.yml --env-file .env.stage pull
             docker compose -f docker-compose.stage.yml --env-file .env.stage up -d
             docker image prune -f
@@ -104,9 +106,11 @@ jobs:
           host: ${{ secrets.PROD_SERVER_HOST }}
           username: ${{ secrets.PROD_SERVER_USER }}
           key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+          script_stop: true
           script: |
+            set -e
             cd /home/eazydrive/snapcar-tracker/prod
-            echo "${{ secrets.VPS_GITHUB_PAT }}" | docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
+            echo "${{ secrets.VPS_GITHUB_PAT }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
             docker compose -f docker-compose.prod.yml --env-file .env.prod pull
             docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
             docker image prune -f
