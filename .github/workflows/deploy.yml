@@ -1,26 +1,27 @@
-name: Build and Deploy Snapcar Tracker
+name: Deploy Snapcar Tracker
 
 on:
   push:
     branches:
       - main
-      - develop
 
 env:
   REGISTRY: ghcr.io
   IMAGE_REPOSITORY: ghcr.io/eazy-drive-development/snapcar-application-tracker
+  DEPLOY_DIR: /home/eazydrive/snapcar-tracker/prod
 
 jobs:
-  build-and-push:
+  build-and-deploy:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Log in to GitHub Container Registry
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -34,7 +35,7 @@ jobs:
           file: ./backend/Dockerfile
           push: true
           tags: |
-            ${{ env.IMAGE_REPOSITORY }}/backend:${{ github.ref_name }}
+            ${{ env.IMAGE_REPOSITORY }}/backend:main
             ${{ env.IMAGE_REPOSITORY }}/backend:${{ github.sha }}
 
       - name: Build and push frontend image
@@ -44,29 +45,10 @@ jobs:
           file: ./frontend/Dockerfile
           push: true
           tags: |
-            ${{ env.IMAGE_REPOSITORY }}/frontend:${{ github.ref_name }}
+            ${{ env.IMAGE_REPOSITORY }}/frontend:main
             ${{ env.IMAGE_REPOSITORY }}/frontend:${{ github.sha }}
 
-  deploy-staging:
-    needs: build-and-push
-    if: github.ref == 'refs/heads/develop'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Copy staging compose file to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.PROD_SERVER_HOST }}
-          username: ${{ secrets.PROD_SERVER_USER }}
-          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
-          port: 22
-          source: docker-compose.stage.yml
-          target: /home/eazydrive/snapcar-tracker/stage
-          timeout: 30s
-
-      - name: Deploy staging containers
+      - name: Create deploy directory on server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.PROD_SERVER_HOST }}
@@ -75,31 +57,19 @@ jobs:
           script_stop: true
           script: |
             set -e
-            cd /home/eazydrive/snapcar-tracker/stage
-            docker compose -f docker-compose.stage.yml --env-file .env.stage pull
-            docker compose -f docker-compose.stage.yml --env-file .env.stage up -d
-            docker image prune -f
+            mkdir -p ${{ env.DEPLOY_DIR }}
 
-  deploy-production:
-    needs: build-and-push
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Copy production compose file to server
+      - name: Copy Docker Compose file to server
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.PROD_SERVER_HOST }}
           username: ${{ secrets.PROD_SERVER_USER }}
           key: ${{ secrets.PROD_SERVER_SSH_KEY }}
-          port: 22
           source: docker-compose.prod.yml
-          target: /home/eazydrive/snapcar-tracker/prod
+          target: ${{ env.DEPLOY_DIR }}
           timeout: 30s
 
-      - name: Deploy production containers
+      - name: Deploy containers on server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.PROD_SERVER_HOST }}
@@ -108,7 +78,8 @@ jobs:
           script_stop: true
           script: |
             set -e
-            cd /home/eazydrive/snapcar-tracker/prod
+            cd ${{ env.DEPLOY_DIR }}
+            echo "${{ secrets.VPS_GITHUB_PAT }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
             docker compose -f docker-compose.prod.yml --env-file .env.prod pull
             docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
             docker image prune -f
