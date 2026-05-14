@@ -9,6 +9,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_REPOSITORY: ghcr.io/eazy-drive-development/snapcar-application-tracker
   DEPLOY_DIR: /home/eazydrive/snapcar-tracker/prod
+  COMPOSE_PROJECT_NAME: snapcar-tracker-prod
 
 jobs:
   build-and-deploy:
@@ -80,6 +81,6 @@ jobs:
             set -e
             cd ${{ env.DEPLOY_DIR }}
             echo "${{ secrets.VPS_GITHUB_PAT }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
-            docker compose -f docker-compose.prod.yml --env-file .env.prod pull
-            docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+            docker compose -p ${{ env.COMPOSE_PROJECT_NAME }} -f docker-compose.prod.yml --env-file .env.prod pull
+            docker compose -p ${{ env.COMPOSE_PROJECT_NAME }} -f docker-compose.prod.yml --env-file .env.prod up -d
             docker image prune -f

@@ -1,3 +1,5 @@
+name: snapcar-tracker-prod
+
 services:
   backend:
     image: ghcr.io/eazy-drive-development/snapcar-application-tracker/backend:main
