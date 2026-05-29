@@ -18,9 +18,11 @@ services:
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT}
       SMTP_USER: ${SMTP_USER}
-      SMTP_PASS: ${SMTP_PASS}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SALES_REPORT_FROM: ${SALES_REPORT_FROM}
       SALES_REPORT_TO: ${SALES_REPORT_TO}
       SALES_REPORT_CRON: ${SALES_REPORT_CRON}
+      SALES_REPORT_TIME_ZONE: ${SALES_REPORT_TIME_ZONE:-Asia/Kolkata}
     restart: unless-stopped
 
   frontend:

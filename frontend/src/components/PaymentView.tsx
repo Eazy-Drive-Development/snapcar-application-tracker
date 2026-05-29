@@ -8,6 +8,7 @@ interface VendorPayout {
   vendorId: number | null;
   userId: number | null;
   vendorName: string;
+  customerName: string;
   amount: number;
   totalAmount: number;
   bookingStatus: string;
@@ -292,7 +293,8 @@ function PaymentView() {
             <div className="modal-header">
               <div>
                 <h2 id="payment-modal-title">{selectedPayment.paymentTrackerId ? 'Edit payment' : 'Pay vendor'}</h2>
-                <p>{selectedPayment.vendorName}</p>
+                <p>Customer: {selectedPayment.customerName}</p>
+                <p>Vendor: {selectedPayment.vendorName}</p>
               </div>
               <button className="modal-close" type="button" onClick={closePaymentModal} aria-label="Close payment popup">
                 x

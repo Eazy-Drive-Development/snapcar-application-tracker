@@ -17,6 +17,7 @@ type VendorPayout = {
   vendorId: number | null;
   userId: number | null;
   vendorName: string;
+  customerName: string;
   amount: number;
   totalAmount: number;
   bookingStatus: string;

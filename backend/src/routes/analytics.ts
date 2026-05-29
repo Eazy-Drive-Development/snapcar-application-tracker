@@ -129,6 +129,7 @@ router.get('/pending-payments', wrapAsync(async (_req: Request, res: Response) =
         vendorId: number | null;
         userId: number | null;
         vendorName: string;
+        customerName: string;
         amount: number;
         totalAmount: number;
         bookingStatus: string | null;
@@ -148,6 +149,7 @@ router.get('/pending-payments', wrapAsync(async (_req: Request, res: Response) =
               p.vendor_id AS vendorId,
               cb.user_id AS userId,
               COALESCE(u.name, CONCAT('Vendor #', p.vendor_id), 'Unknown vendor') AS vendorName,
+              COALESCE(customer.name, CONCAT('Customer #', cb.user_id), 'Unknown customer') AS customerName,
               p.amount AS amount,
               COALESCE(cb.price, 0) AS totalAmount,
               cb.status AS bookingStatus,
@@ -163,6 +165,7 @@ router.get('/pending-payments', wrapAsync(async (_req: Request, res: Response) =
        FROM payment p
        LEFT JOIN users u ON u.id = p.vendor_id
        LEFT JOIN car_bookings cb ON cb.id = p.booking_id
+       LEFT JOIN users customer ON customer.id = cb.user_id
        LEFT JOIN (
          SELECT pt.*
          FROM payment_tracker pt
@@ -184,6 +187,7 @@ router.get('/pending-payments', wrapAsync(async (_req: Request, res: Response) =
         paymentId: row.paymentId,
         bookingId: row.bookingId,
         vendorName: row.vendorName,
+        customerName: row.customerName,
         amount: Number(row.amount),
         totalAmount: Number(row.totalAmount),
         bookingStatus: row.bookingStatus ?? 'Unknown',

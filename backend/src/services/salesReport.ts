@@ -4,6 +4,7 @@ import { RowDataPacket } from 'mysql2';
 import pool from '../db';
 
 const REPORT_TIME_ZONE = process.env.SALES_REPORT_TIME_ZONE ?? 'Asia/Kolkata';
+const REPORT_CRON = process.env.SALES_REPORT_CRON ?? '0 10 * * *';
 const PLATFORM_NAME = 'Snapcar';
 
 type QueryRow<T> = T & RowDataPacket;
@@ -177,11 +178,13 @@ function getMailConfig() {
     SMTP_PORT,
     SMTP_USER,
     SMTP_PASSWORD,
+    SMTP_PASS,
     SALES_REPORT_FROM,
     SALES_REPORT_TO
   } = process.env;
+  const smtpPassword = SMTP_PASSWORD ?? SMTP_PASS;
 
-  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASSWORD || !SALES_REPORT_FROM || !SALES_REPORT_TO) {
+  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !smtpPassword || !SALES_REPORT_FROM || !SALES_REPORT_TO) {
     return null;
   }
 
@@ -190,7 +193,7 @@ function getMailConfig() {
     port: Number(SMTP_PORT),
     auth: {
       user: SMTP_USER,
-      pass: SMTP_PASSWORD
+      pass: smtpPassword
     },
     from: SALES_REPORT_FROM,
     to: SALES_REPORT_TO
@@ -229,7 +232,7 @@ export async function sendSalesReportEmail() {
 }
 
 export function scheduleSalesReportEmail() {
-  cron.schedule('0 10 * * *', async () => {
+  cron.schedule(REPORT_CRON, async () => {
     try {
       if (!isSalesReportEmailConfigured()) {
         // eslint-disable-next-line no-console
