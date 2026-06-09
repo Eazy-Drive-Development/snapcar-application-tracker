@@ -17,7 +17,9 @@ type VendorPayout = {
   vendorId: number | null;
   userId: number | null;
   vendorName: string;
+  vendorPhoneNumber: string | null;
   customerName: string;
+  customerPhoneNumber: string | null;
   amount: number;
   totalAmount: number;
   bookingStatus: string;
@@ -129,4 +131,12 @@ export const getAccountSummary = async () => fetchJson<AccountSummary>(`/analyti
 export const createAccountTransaction = async (payload: CreateAccountTransactionPayload) => postJson<{ id: number }>(`/analytics/account-transactions`, payload);
 export const deleteAccountTransaction = async (id: number) => deleteJson<{ deleted: boolean; id: number }>(`/analytics/account-transactions/${id}`);
 export const createPaymentTracker = async (payload: CreatePaymentTrackerPayload) => postJson<{ id: number; amountPaid: number; profit: number; notes: string }>(`/analytics/payment-tracker`, payload);
-export const getSummary = async () => fetchJson<{ totalBookings: number; grossEarnings: number; pendingAmount: number }>(`/analytics/summary`);
+export const getSummary = async () => fetchJson<{
+  totalBookings: number;
+  totalCustomers: number;
+  totalVendors: number;
+  totalDeletedCustomers: number;
+  totalDeletedVendors: number;
+  grossEarnings: number;
+  pendingAmount: number;
+}>(`/analytics/summary`);

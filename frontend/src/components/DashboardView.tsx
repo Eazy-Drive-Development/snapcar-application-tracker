@@ -25,7 +25,15 @@ function formatCurrency(value: number) {
 
 function DashboardView() {
   const [isLoading, setIsLoading] = useState(true);
-  const [summary, setSummary] = useState({ totalBookings: 0, grossEarnings: 0, pendingAmount: 0 });
+  const [summary, setSummary] = useState({
+    totalBookings: 0,
+    totalCustomers: 0,
+    totalVendors: 0,
+    totalDeletedCustomers: 0,
+    totalDeletedVendors: 0,
+    grossEarnings: 0,
+    pendingAmount: 0
+  });
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -65,7 +73,23 @@ function DashboardView() {
           <section className="summary-grid">
             <article className="summary-card">
               <h2>Total bookings</h2>
-              <p>{summary.totalBookings}</p>
+              <p>{summary.totalBookings.toLocaleString()}</p>
+            </article>
+            <article className="summary-card">
+              <h2>Total customers</h2>
+              <p>{summary.totalCustomers.toLocaleString()}</p>
+            </article>
+            <article className="summary-card">
+              <h2>Total vendors</h2>
+              <p>{summary.totalVendors.toLocaleString()}</p>
+            </article>
+            <article className="summary-card">
+              <h2>Deleted customers</h2>
+              <p>{summary.totalDeletedCustomers.toLocaleString()}</p>
+            </article>
+            <article className="summary-card">
+              <h2>Deleted vendors</h2>
+              <p>{summary.totalDeletedVendors.toLocaleString()}</p>
             </article>
             <article className="summary-card">
               <h2>Gross earnings</h2>

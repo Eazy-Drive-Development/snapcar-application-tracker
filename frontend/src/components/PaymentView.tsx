@@ -8,7 +8,9 @@ interface VendorPayout {
   vendorId: number | null;
   userId: number | null;
   vendorName: string;
+  vendorPhoneNumber: string | null;
   customerName: string;
+  customerPhoneNumber: string | null;
   amount: number;
   totalAmount: number;
   bookingStatus: string;
@@ -54,6 +56,10 @@ function formatBookingDate(startDate: string | null, endDate: string | null) {
 
 function isCancelledStatus(status: string) {
   return status.toLowerCase().includes('cancel');
+}
+
+function formatPerson(name: string, phoneNumber: string | null) {
+  return phoneNumber ? `${name} (${phoneNumber})` : name;
 }
 
 function PaymentView() {
@@ -293,8 +299,8 @@ function PaymentView() {
             <div className="modal-header">
               <div>
                 <h2 id="payment-modal-title">{selectedPayment.paymentTrackerId ? 'Edit payment' : 'Pay vendor'}</h2>
-                <p>Customer: {selectedPayment.customerName}</p>
-                <p>Vendor: {selectedPayment.vendorName}</p>
+                <p>Customer: {formatPerson(selectedPayment.customerName, selectedPayment.customerPhoneNumber)}</p>
+                <p>Vendor: {formatPerson(selectedPayment.vendorName, selectedPayment.vendorPhoneNumber)}</p>
               </div>
               <button className="modal-close" type="button" onClick={closePaymentModal} aria-label="Close payment popup">
                 x
@@ -320,7 +326,7 @@ function PaymentView() {
                       checked={refundTarget === 'vendor'}
                       onChange={() => setRefundTarget('vendor')}
                     />
-                    Vendor
+                    Vendor: {formatPerson(selectedPayment.vendorName, selectedPayment.vendorPhoneNumber)}
                   </label>
                   <label>
                     <input
@@ -330,7 +336,7 @@ function PaymentView() {
                       checked={refundTarget === 'user'}
                       onChange={() => setRefundTarget('user')}
                     />
-                    User
+                    User: {formatPerson(selectedPayment.customerName, selectedPayment.customerPhoneNumber)}
                   </label>
                   <label>
                     <input

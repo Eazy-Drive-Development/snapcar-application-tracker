@@ -129,7 +129,9 @@ router.get('/pending-payments', wrapAsync(async (_req: Request, res: Response) =
         vendorId: number | null;
         userId: number | null;
         vendorName: string;
+        vendorPhoneNumber: string | null;
         customerName: string;
+        customerPhoneNumber: string | null;
         amount: number;
         totalAmount: number;
         bookingStatus: string | null;
@@ -149,7 +151,9 @@ router.get('/pending-payments', wrapAsync(async (_req: Request, res: Response) =
               p.vendor_id AS vendorId,
               cb.user_id AS userId,
               COALESCE(u.name, CONCAT('Vendor #', p.vendor_id), 'Unknown vendor') AS vendorName,
+              u.phone_number AS vendorPhoneNumber,
               COALESCE(customer.name, CONCAT('Customer #', cb.user_id), 'Unknown customer') AS customerName,
+              customer.phone_number AS customerPhoneNumber,
               p.amount AS amount,
               COALESCE(cb.price, 0) AS totalAmount,
               cb.status AS bookingStatus,
@@ -187,7 +191,9 @@ router.get('/pending-payments', wrapAsync(async (_req: Request, res: Response) =
         paymentId: row.paymentId,
         bookingId: row.bookingId,
         vendorName: row.vendorName,
+        vendorPhoneNumber: row.vendorPhoneNumber,
         customerName: row.customerName,
+        customerPhoneNumber: row.customerPhoneNumber,
         amount: Number(row.amount),
         totalAmount: Number(row.totalAmount),
         bookingStatus: row.bookingStatus ?? 'Unknown',
@@ -555,12 +561,23 @@ router.get('/summary', wrapAsync(async (_req: Request, res: Response) => {
     const [summaryRows] = await pool.query<
       Array<QueryRow<{ totalBookings: number; grossEarnings: number }>>
     >(
-      `SELECT COUNT(DISTINCT p.booking_id) AS totalBookings, COALESCE(SUM(p.amount), 0) AS grossEarnings
+      `SELECT
+         COUNT(DISTINCT p.booking_id) AS totalBookings,
+         COALESCE(SUM(p.amount), 0) AS grossEarnings
        FROM payment p
        JOIN car_bookings cb ON cb.id = p.booking_id
-       WHERE cb.created_on >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-         AND p.row_status = 0
+       WHERE p.row_status = 0
          AND p.status = 'SUCCESS'`
+    );
+
+    const [userRows] = await pool.query<
+      Array<QueryRow<{ totalCustomers: number; totalVendors: number }>>
+    >(
+      `SELECT
+         COUNT(DISTINCT CASE WHEN ur.role_id = 1 THEN ur.user_id END) AS totalCustomers,
+         COUNT(DISTINCT CASE WHEN ur.role_id = 2 THEN ur.user_id END) AS totalVendors
+       FROM user_roles ur
+       WHERE ur.role_id IN (1, 2)`
     );
 
     const [pendingRows] = await pool.query<
@@ -572,17 +589,42 @@ router.get('/summary', wrapAsync(async (_req: Request, res: Response) => {
          AND status = 'CREATED'`
     );
 
+    const [deletedRows] = await pool.query<
+      Array<QueryRow<{ totalDeletedCustomers: number; totalDeletedVendors: number }>>
+    >(
+      `SELECT
+         COUNT(DISTINCT CASE WHEN ur.role_id = 1 THEN da.user_id END) AS totalDeletedCustomers,
+         COUNT(DISTINCT CASE WHEN ur.role_id = 2 THEN da.user_id END) AS totalDeletedVendors
+       FROM deleted_accounts da
+       JOIN user_roles ur ON ur.user_id = da.user_id
+       WHERE ur.role_id IN (1, 2)`
+    );
+
     const summary = summaryRows[0] ?? { totalBookings: 0, grossEarnings: 0 };
+    const users = userRows[0] ?? { totalCustomers: 0, totalVendors: 0 };
     const pending = pendingRows[0] ?? { pendingAmount: 0 };
+    const deleted = deletedRows[0] ?? { totalDeletedCustomers: 0, totalDeletedVendors: 0 };
 
     res.json({
       totalBookings: Number(summary.totalBookings),
+      totalCustomers: Number(users.totalCustomers),
+      totalVendors: Number(users.totalVendors),
+      totalDeletedCustomers: Number(deleted.totalDeletedCustomers),
+      totalDeletedVendors: Number(deleted.totalDeletedVendors),
       grossEarnings: Number(summary.grossEarnings),
       pendingAmount: Number(pending.pendingAmount)
     });
   } catch (error) {
     if (isMissingTableError(error)) {
-      return res.json({ totalBookings: 0, grossEarnings: 0, pendingAmount: 0 });
+      return res.json({
+        totalBookings: 0,
+        totalCustomers: 0,
+        totalVendors: 0,
+        totalDeletedCustomers: 0,
+        totalDeletedVendors: 0,
+        grossEarnings: 0,
+        pendingAmount: 0
+      });
     }
     throw error;
   }

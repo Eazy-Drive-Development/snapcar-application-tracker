@@ -20,6 +20,13 @@ export interface SalesReportData {
 }
 
 export interface SalesReportEmailData {
+  overall: {
+    totalCustomers: number;
+    totalVendors: number;
+    totalBookings: number;
+    totalDeletedCustomers: number;
+    totalDeletedVendors: number;
+  };
   yesterday: SalesReportData;
   monthToDate: SalesReportData;
 }
@@ -98,8 +105,52 @@ export async function getSalesReportData(fromDate: string, toDate: string, label
 
 export async function getSalesReportEmailData(): Promise<SalesReportEmailData> {
   const yesterday = getYesterdayInTimeZone();
+  const [overallRows] = await pool.query<
+    Array<QueryRow<{
+      totalCustomers: number;
+      totalVendors: number;
+      totalBookings: number;
+      totalDeletedCustomers: number;
+      totalDeletedVendors: number;
+    }>>
+  >(
+    `SELECT
+       (SELECT COUNT(DISTINCT CASE WHEN ur.role_id = 1 THEN ur.user_id END)
+        FROM user_roles ur
+        WHERE ur.role_id IN (1, 2)) AS totalCustomers,
+       (SELECT COUNT(DISTINCT CASE WHEN ur.role_id = 2 THEN ur.user_id END)
+        FROM user_roles ur
+        WHERE ur.role_id IN (1, 2)) AS totalVendors,
+       (SELECT COUNT(DISTINCT p.booking_id)
+        FROM payment p
+        JOIN car_bookings cb ON cb.id = p.booking_id
+        WHERE p.row_status = 0
+          AND p.status = 'SUCCESS') AS totalBookings,
+       (SELECT COUNT(DISTINCT da.user_id)
+        FROM deleted_accounts da
+        JOIN user_roles ur ON ur.user_id = da.user_id
+        WHERE ur.role_id = 1) AS totalDeletedCustomers,
+       (SELECT COUNT(DISTINCT da.user_id)
+        FROM deleted_accounts da
+        JOIN user_roles ur ON ur.user_id = da.user_id
+        WHERE ur.role_id = 2) AS totalDeletedVendors`
+  );
+  const overall = overallRows[0] ?? {
+    totalCustomers: 0,
+    totalVendors: 0,
+    totalBookings: 0,
+    totalDeletedCustomers: 0,
+    totalDeletedVendors: 0
+  };
 
   return {
+    overall: {
+      totalCustomers: Number(overall.totalCustomers),
+      totalVendors: Number(overall.totalVendors),
+      totalBookings: Number(overall.totalBookings),
+      totalDeletedCustomers: Number(overall.totalDeletedCustomers),
+      totalDeletedVendors: Number(overall.totalDeletedVendors)
+    },
     yesterday: await getSalesReportData(yesterday, yesterday, "Yesterday's Report"),
     monthToDate: await getSalesReportData(
       getMonthStartInTimeZone(),
@@ -144,12 +195,38 @@ function buildHtmlSection(report: SalesReportData) {
   `;
 }
 
+function buildOverallTextSection(report: SalesReportEmailData['overall']) {
+  return [
+    'Overall Totals',
+    `Total customers: ${report.totalCustomers}`,
+    `Total vendors: ${report.totalVendors}`,
+    `Total bookings: ${report.totalBookings}`,
+    `Total deleted customers: ${report.totalDeletedCustomers}`,
+    `Total deleted vendors: ${report.totalDeletedVendors}`
+  ].join('\n');
+}
+
+function buildOverallHtmlSection(report: SalesReportEmailData['overall']) {
+  return `
+    <h3 style="margin:24px 0 8px">Overall Totals</h3>
+    <table cellpadding="10" cellspacing="0" border="0" style="border-collapse:collapse;min-width:420px;margin-bottom:12px">
+      <tr style="background:#f8fafc"><td>Total customers</td><td><strong>${report.totalCustomers}</strong></td></tr>
+      <tr><td>Total vendors</td><td><strong>${report.totalVendors}</strong></td></tr>
+      <tr style="background:#f8fafc"><td>Total bookings</td><td><strong>${report.totalBookings}</strong></td></tr>
+      <tr><td>Total deleted customers</td><td><strong>${report.totalDeletedCustomers}</strong></td></tr>
+      <tr style="background:#f8fafc"><td>Total deleted vendors</td><td><strong>${report.totalDeletedVendors}</strong></td></tr>
+    </table>
+  `;
+}
+
 export function buildSalesReportEmail(report: SalesReportEmailData) {
   const subject = `${PLATFORM_NAME} Daily Sales Report - ${report.yesterday.toDate}`;
   const text = [
     `Hi Hitesh/Ajay,`,
     '',
     `Please find below the ${PLATFORM_NAME} sales summary with yesterday's report and this month-to-date status.`,
+    '',
+    buildOverallTextSection(report.overall),
     '',
     buildTextSection(report.yesterday),
     '',
@@ -163,6 +240,7 @@ export function buildSalesReportEmail(report: SalesReportEmailData) {
     <div style="font-family:Arial,sans-serif;color:#0f172a;line-height:1.5">
       <p>Hi Hitesh/Ajay,</p>
       <p>Please find below the <strong>${PLATFORM_NAME}</strong> sales summary with yesterday's report and this month-to-date status.</p>
+      ${buildOverallHtmlSection(report.overall)}
       ${buildHtmlSection(report.yesterday)}
       ${buildHtmlSection(report.monthToDate)}
       <p>Regards,<br />${PLATFORM_NAME} Reports</p>
