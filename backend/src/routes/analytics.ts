@@ -288,6 +288,9 @@ router.get('/vendor-listings', wrapAsync(async (_req: Request, res: Response) =>
         vendorPhoneNumber: string | null;
         carId: number | null;
         vehicleNumber: string | null;
+        carBrand: string | null;
+        carModel: string | null;
+        activePauseListings: string | null;
         listingId: number | null;
         listingStartDate: Date | null;
         listingEndDate: Date | null;
@@ -306,6 +309,9 @@ router.get('/vendor-listings', wrapAsync(async (_req: Request, res: Response) =>
          u.phone_number AS vendorPhoneNumber,
          vc.id AS carId,
          vc.vehicle_number AS vehicleNumber,
+         car_brand.brand AS carBrand,
+         car_model.model_name AS carModel,
+         pause_summary.activePauseListings AS activePauseListings,
          vcl.id AS listingId,
          vcl.start_listing_date AS listingStartDate,
          vcl.end_listing_date AS listingEndDate,
@@ -330,6 +336,23 @@ router.get('/vendor-listings', wrapAsync(async (_req: Request, res: Response) =>
         AND COALESCE(ur.row_status, 0) = 0
        LEFT JOIN vendor_cars vc ON vc.vendor_id = u.id
         AND COALESCE(vc.row_status, 0) = 0
+       LEFT JOIN car_brands car_brand ON car_brand.id = vc.car_brand_id
+       LEFT JOIN car_models car_model ON car_model.id = vc.car_model_id
+       LEFT JOIN (
+         SELECT
+           vendor_car_id,
+           JSON_ARRAYAGG(JSON_OBJECT(
+             'id', id,
+             'listingId', listing_id,
+             'startDate', start_date,
+             'endDate', end_date
+           )) AS activePauseListings
+         FROM pause_listings
+         WHERE COALESCE(row_status, 0) = 0
+           AND end_date IS NOT NULL
+           AND DATE(end_date) >= CURDATE()
+         GROUP BY vendor_car_id
+       ) pause_summary ON pause_summary.vendor_car_id = vc.id
        LEFT JOIN (
          SELECT ranked_listings.*
          FROM (
@@ -381,6 +404,10 @@ router.get('/vendor-listings', wrapAsync(async (_req: Request, res: Response) =>
         vendorPhoneNumber: row.vendorPhoneNumber,
         carId: row.carId,
         vehicleNumber: row.vehicleNumber,
+        carName: [row.carBrand, row.carModel].filter(Boolean).join(' ') || null,
+        activePauseListings: typeof row.activePauseListings === 'string'
+          ? JSON.parse(row.activePauseListings) as Array<{ id: number; listingId: number | null; startDate: Date | null; endDate: Date | null }>
+          : row.activePauseListings ?? [],
         listingId: row.listingId,
         listingStartDate: row.listingStartDate,
         listingEndDate: row.listingEndDate,

@@ -507,13 +507,18 @@ h1 {
   font-weight: 700;
 }
 
-.filter-controls select {
+.filter-controls select,
+.filter-controls input {
   min-width: 170px;
   border: 1px solid #cbd5e1;
   border-radius: 10px;
   padding: 10px 12px;
   color: #0f172a;
   background: #ffffff;
+}
+
+.filter-controls .search-filter input {
+  min-width: 260px;
 }
 
 .compact-button {
@@ -630,6 +635,21 @@ tbody tr:hover {
   cursor: not-allowed;
 }
 
+.pause-listing-button {
+  border: none;
+  border-radius: 8px;
+  background: #fef3c7;
+  color: #92400e;
+  cursor: pointer;
+  font-weight: 700;
+  min-width: 126px;
+  padding: 9px 14px;
+}
+
+.pause-listing-button:hover {
+  background: #fde68a;
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -648,6 +668,14 @@ tbody tr:hover {
   background: #ffffff;
   box-shadow: 0 28px 80px rgba(15, 23, 42, 0.26);
   padding: 24px;
+}
+
+.payment-modal.pause-modal {
+  width: min(720px, 100%);
+}
+
+.pause-listing-table table {
+  margin-top: 0;
 }
 
 .modal-header {

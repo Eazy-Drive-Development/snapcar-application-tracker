@@ -49,6 +49,13 @@ export type VendorListingRow = {
   vendorPhoneNumber: string | null;
   carId: number | null;
   vehicleNumber: string | null;
+  carName: string | null;
+  activePauseListings: Array<{
+    id: number;
+    listingId: number | null;
+    startDate: string | null;
+    endDate: string | null;
+  }>;
   listingId: number | null;
   listingStartDate: string | null;
   listingEndDate: string | null;
