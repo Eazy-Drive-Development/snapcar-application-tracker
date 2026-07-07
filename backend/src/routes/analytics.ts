@@ -35,6 +35,20 @@ const parsePositiveAmount = (value: unknown) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 };
 
+const parseDateInput = (value: unknown) => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return null;
+  }
+
+  const parsed = new Date(`${trimmed}T00:00:00.000Z`);
+  return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== trimmed ? null : trimmed;
+};
+
 const formatDayRows = (rows: Array<{ day: string; count?: number; totalAmount?: number }>, days: number) => {
   const data = new Map(rows.map((row) => [row.day, row]));
   const result: Array<{ day: string; count: number; totalAmount: number }> = [];
@@ -263,6 +277,183 @@ router.get('/subscriptions', wrapAsync(async (_req: Request, res: Response) => {
     }
     throw error;
   }
+}));
+
+router.get('/vendor-listings', wrapAsync(async (_req: Request, res: Response) => {
+  try {
+    const [rows] = await pool.query<
+      Array<QueryRow<{
+        vendorId: number;
+        vendorName: string | null;
+        vendorPhoneNumber: string | null;
+        carId: number | null;
+        vehicleNumber: string | null;
+        listingId: number | null;
+        listingStartDate: Date | null;
+        listingEndDate: Date | null;
+        listingStatus: string;
+        subscriptionId: number | null;
+        subscriptionStartDate: Date | null;
+        subscriptionEndDate: Date | null;
+        subscriptionAmount: number | null;
+        subscriptionStatusValue: string | null;
+        subscriptionDateStatus: string;
+      }>>
+    >(
+      `SELECT
+         u.id AS vendorId,
+         u.name AS vendorName,
+         u.phone_number AS vendorPhoneNumber,
+         vc.id AS carId,
+         vc.vehicle_number AS vehicleNumber,
+         vcl.id AS listingId,
+         vcl.start_listing_date AS listingStartDate,
+         vcl.end_listing_date AS listingEndDate,
+         CASE
+           WHEN vcl.id IS NULL OR vcl.end_listing_date IS NULL THEN 'Inactive'
+           WHEN DATE(vcl.end_listing_date) >= CURDATE() THEN 'Active'
+           ELSE 'Inactive'
+         END AS listingStatus,
+         latest_subscription.id AS subscriptionId,
+         latest_subscription.start_date AS subscriptionStartDate,
+         latest_subscription.end_date AS subscriptionEndDate,
+         latest_subscription.amount AS subscriptionAmount,
+         latest_subscription.status AS subscriptionStatusValue,
+         CASE
+           WHEN latest_subscription.id IS NULL OR latest_subscription.end_date IS NULL THEN 'Inactive'
+           WHEN DATE(latest_subscription.end_date) >= CURDATE() THEN 'Active'
+           ELSE 'Inactive'
+         END AS subscriptionDateStatus
+       FROM users u
+       JOIN user_roles ur ON ur.user_id = u.id
+        AND ur.role_id = 2
+        AND COALESCE(ur.row_status, 0) = 0
+       LEFT JOIN vendor_cars vc ON vc.vendor_id = u.id
+        AND COALESCE(vc.row_status, 0) = 0
+       LEFT JOIN (
+         SELECT ranked_listings.*
+         FROM (
+           SELECT vcl.*,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY vcl.vendor_car_id
+                    ORDER BY
+                      CASE
+                        WHEN vcl.start_listing_date IS NOT NULL OR vcl.end_listing_date IS NOT NULL THEN 0
+                        ELSE 1
+                      END,
+                      COALESCE(vcl.end_listing_date, vcl.start_listing_date, vcl.created_on) DESC,
+                      vcl.id DESC
+                  ) AS listingRank
+           FROM vendor_car_listings vcl
+           WHERE COALESCE(vcl.row_status, 0) = 0
+             AND COALESCE(vcl.is_cancelled, 0) = 0
+         ) ranked_listings
+         WHERE ranked_listings.listingRank = 1
+       ) vcl ON vcl.vendor_car_id = vc.id
+       LEFT JOIN (
+         SELECT s.*
+         FROM subscriptions s
+         JOIN (
+           SELECT vendor_id, MAX(end_date) AS max_end_date
+           FROM subscriptions
+           WHERE COALESCE(row_status, 0) = 0
+           GROUP BY vendor_id
+         ) max_subscription ON max_subscription.vendor_id = s.vendor_id
+          AND (
+            max_subscription.max_end_date = s.end_date
+            OR (max_subscription.max_end_date IS NULL AND s.end_date IS NULL)
+          )
+         JOIN (
+           SELECT vendor_id, end_date, MAX(id) AS id
+           FROM subscriptions
+           WHERE COALESCE(row_status, 0) = 0
+           GROUP BY vendor_id, end_date
+         ) latest_subscription_id ON latest_subscription_id.id = s.id
+       ) latest_subscription ON latest_subscription.vendor_id = u.id
+       WHERE COALESCE(u.row_status, 0) = 0
+       ORDER BY u.name, u.id, vc.vehicle_number, vc.id, vcl.end_listing_date DESC, vcl.id DESC`
+    );
+
+    res.json({
+      data: rows.map((row) => ({
+        vendorId: row.vendorId,
+        vendorName: row.vendorName ?? `Vendor #${row.vendorId}`,
+        vendorPhoneNumber: row.vendorPhoneNumber,
+        carId: row.carId,
+        vehicleNumber: row.vehicleNumber,
+        listingId: row.listingId,
+        listingStartDate: row.listingStartDate,
+        listingEndDate: row.listingEndDate,
+        listingStatus: row.listingStatus,
+        subscriptionId: row.subscriptionId,
+        subscriptionStartDate: row.subscriptionStartDate,
+        subscriptionEndDate: row.subscriptionEndDate,
+        subscriptionAmount: row.subscriptionAmount === null ? null : Number(row.subscriptionAmount),
+        subscriptionStatusValue: row.subscriptionStatusValue,
+        subscriptionDateStatus: row.subscriptionDateStatus
+      }))
+    });
+  } catch (error) {
+    if (isMissingTableError(error)) {
+      return res.json({ data: [] });
+    }
+    throw error;
+  }
+}));
+
+router.patch('/vendor-listings/:listingId/end-date', wrapAsync(async (req: Request, res: Response) => {
+  const listingId = parsePositiveInteger(req.params.listingId);
+  const endDate = parseDateInput(req.body.endDate);
+
+  if (!listingId) {
+    return res.status(400).json({ error: 'Listing id is required.' });
+  }
+
+  if (!endDate) {
+    return res.status(400).json({ error: 'endDate must be a valid date in YYYY-MM-DD format.' });
+  }
+
+  const [result] = await pool.query<ResultSetHeader>(
+    `UPDATE vendor_car_listings
+     SET end_listing_date = ?, modified_on = NOW(6)
+     WHERE id = ?
+       AND COALESCE(row_status, 0) = 0
+       AND COALESCE(is_cancelled, 0) = 0`,
+    [endDate, listingId]
+  );
+
+  if (result.affectedRows === 0) {
+    return res.status(404).json({ error: 'Active listing not found.' });
+  }
+
+  res.json({ id: listingId, endDate });
+}));
+
+router.patch('/subscriptions/:subscriptionId/end-date', wrapAsync(async (req: Request, res: Response) => {
+  const subscriptionId = parsePositiveInteger(req.params.subscriptionId);
+  const endDate = parseDateInput(req.body.endDate);
+
+  if (!subscriptionId) {
+    return res.status(400).json({ error: 'Subscription id is required.' });
+  }
+
+  if (!endDate) {
+    return res.status(400).json({ error: 'endDate must be a valid date in YYYY-MM-DD format.' });
+  }
+
+  const [result] = await pool.query<ResultSetHeader>(
+    `UPDATE subscriptions
+     SET end_date = ?, modified_on = NOW(6)
+     WHERE id = ?
+       AND COALESCE(row_status, 0) = 0`,
+    [endDate, subscriptionId]
+  );
+
+  if (result.affectedRows === 0) {
+    return res.status(404).json({ error: 'Subscription not found.' });
+  }
+
+  res.json({ id: subscriptionId, endDate });
 }));
 
 router.get('/account-summary', wrapAsync(async (_req: Request, res: Response) => {

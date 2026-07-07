@@ -43,6 +43,23 @@ export type SubscriptionRow = {
   endDate: string | null;
   createdOn: string | null;
 };
+export type VendorListingRow = {
+  vendorId: number;
+  vendorName: string;
+  vendorPhoneNumber: string | null;
+  carId: number | null;
+  vehicleNumber: string | null;
+  listingId: number | null;
+  listingStartDate: string | null;
+  listingEndDate: string | null;
+  listingStatus: 'Active' | 'Inactive';
+  subscriptionId: number | null;
+  subscriptionStartDate: string | null;
+  subscriptionEndDate: string | null;
+  subscriptionAmount: number | null;
+  subscriptionStatusValue: string | null;
+  subscriptionDateStatus: 'Active' | 'Inactive';
+};
 export type AccountSummary = {
   totalProfit: number;
   totalRemaining: number;
@@ -106,6 +123,26 @@ const postJson = async <T>(path: string, body: unknown): Promise<T> => {
   return response.json();
 };
 
+const patchJson = async <T>(path: string, body: unknown): Promise<T> => {
+  const response = await fetch(`${apiBase}${path}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => null);
+    const message = errorBody && typeof errorBody.error === 'string'
+      ? errorBody.error
+      : response.statusText;
+    throw new Error(`API request failed: ${message}`);
+  }
+
+  return response.json();
+};
+
 const deleteJson = async <T>(path: string): Promise<T> => {
   const response = await fetch(`${apiBase}${path}`, {
     method: 'DELETE'
@@ -127,10 +164,17 @@ export const getDailyEarnings = async (days = 14) => fetchJson<{ days: number; d
 export const getDayWiseAnalytics = async (fromDate: string, toDate: string) => fetchJson<DayWiseData[]>(`/analytics/day-wise-analytics?fromDate=${fromDate}&toDate=${toDate}`);
 export const getPendingPayments = async () => fetchJson<{ data: VendorPayout[] }>(`/analytics/pending-payments`);
 export const getSubscriptions = async () => fetchJson<{ data: SubscriptionRow[] }>(`/analytics/subscriptions`);
+export const getVendorListings = async () => fetchJson<{ data: VendorListingRow[] }>(`/analytics/vendor-listings`);
 export const getAccountSummary = async () => fetchJson<AccountSummary>(`/analytics/account-summary`);
 export const createAccountTransaction = async (payload: CreateAccountTransactionPayload) => postJson<{ id: number }>(`/analytics/account-transactions`, payload);
 export const deleteAccountTransaction = async (id: number) => deleteJson<{ deleted: boolean; id: number }>(`/analytics/account-transactions/${id}`);
 export const createPaymentTracker = async (payload: CreatePaymentTrackerPayload) => postJson<{ id: number; amountPaid: number; profit: number; notes: string }>(`/analytics/payment-tracker`, payload);
+export const updateVendorListingEndDate = async (listingId: number, endDate: string) => (
+  patchJson<{ id: number; endDate: string }>(`/analytics/vendor-listings/${listingId}/end-date`, { endDate })
+);
+export const updateSubscriptionEndDate = async (subscriptionId: number, endDate: string) => (
+  patchJson<{ id: number; endDate: string }>(`/analytics/subscriptions/${subscriptionId}/end-date`, { endDate })
+);
 export const getSummary = async () => fetchJson<{
   totalBookings: number;
   totalCustomers: number;

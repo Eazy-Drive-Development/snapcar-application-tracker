@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 interface SidebarProps {
-  activeSection: 'home' | 'payment' | 'subscriptions' | 'account';
-  onNavigate: (section: 'home' | 'payment' | 'subscriptions' | 'account') => void;
+  activeSection: 'home' | 'payment' | 'subscriptions' | 'vendor-listings' | 'account';
+  onNavigate: (section: 'home' | 'payment' | 'subscriptions' | 'vendor-listings' | 'account') => void;
 }
 
 function Sidebar({ activeSection, onNavigate }: SidebarProps) {
@@ -15,7 +15,7 @@ function Sidebar({ activeSection, onNavigate }: SidebarProps) {
     navigate('/login');
   };
 
-  const handleNavigation = (section: 'home' | 'payment' | 'subscriptions' | 'account') => {
+  const handleNavigation = (section: 'home' | 'payment' | 'subscriptions' | 'vendor-listings' | 'account') => {
     onNavigate(section);
     setIsOpen(false);
   };
@@ -63,6 +63,15 @@ function Sidebar({ activeSection, onNavigate }: SidebarProps) {
             >
               <span className="icon">S</span>
               <span>Subscriptions</span>
+            </button>
+
+            <button
+              className={`nav-item ${activeSection === 'vendor-listings' ? 'active' : ''}`}
+              type="button"
+              onClick={() => handleNavigation('vendor-listings')}
+            >
+              <span className="icon">V</span>
+              <span>Vendor Listings</span>
             </button>
 
             <button

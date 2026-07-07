@@ -4,9 +4,10 @@ import Sidebar from '../components/Sidebar';
 import DashboardView from '../components/DashboardView';
 import PaymentView from '../components/PaymentView';
 import SubscriptionsView from '../components/SubscriptionsView';
+import VendorListingsView from '../components/VendorListingsView';
 import AccountView from '../components/AccountView';
 
-type AppSection = 'home' | 'payment' | 'subscriptions' | 'account';
+type AppSection = 'home' | 'payment' | 'subscriptions' | 'vendor-listings' | 'account';
 
 function getSectionFromPath(pathname: string): AppSection {
   if (pathname === '/acount' || pathname === '/account') {
@@ -15,6 +16,10 @@ function getSectionFromPath(pathname: string): AppSection {
 
   if (pathname === '/subscriptions') {
     return 'subscriptions';
+  }
+
+  if (pathname === '/vendor-listings') {
+    return 'vendor-listings';
   }
 
   if (pathname === '/payment') {
@@ -46,6 +51,7 @@ function HomePage() {
         {activeSection === 'home' && <DashboardView />}
         {activeSection === 'payment' && <PaymentView />}
         {activeSection === 'subscriptions' && <SubscriptionsView />}
+        {activeSection === 'vendor-listings' && <VendorListingsView />}
         {activeSection === 'account' && <AccountView />}
       </div>
     </div>

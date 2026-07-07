@@ -471,6 +471,56 @@ h1 {
   margin: 0;
 }
 
+.vendor-listings-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.vendor-listings-toolbar h2 {
+  margin: 0 0 4px;
+}
+
+.vendor-listings-toolbar p {
+  margin: 0;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.filter-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.filter-controls label {
+  display: grid;
+  gap: 6px;
+}
+
+.filter-controls span {
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.filter-controls select {
+  min-width: 170px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: #0f172a;
+  background: #ffffff;
+}
+
+.compact-button {
+  min-height: 44px;
+  padding: 10px 14px;
+}
+
 .report-card {
   padding: 24px;
   background: #ffffff;
@@ -561,6 +611,23 @@ tbody tr:hover {
 .delete-button:disabled {
   cursor: default;
   opacity: 0.72;
+}
+
+.table-action-stack {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.table-action-stack .paid-button {
+  min-width: 104px;
+}
+
+.table-action-stack .paid-button:disabled {
+  background: #e2e8f0;
+  color: #64748b;
+  cursor: not-allowed;
 }
 
 .modal-overlay {

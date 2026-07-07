@@ -117,9 +117,11 @@ export async function getSalesReportEmailData(): Promise<SalesReportEmailData> {
     `SELECT
        (SELECT COUNT(DISTINCT CASE WHEN ur.role_id = 1 THEN ur.user_id END)
         FROM user_roles ur
+        JOIN users u ON u.id = ur.user_id
         WHERE ur.role_id IN (1, 2)) AS totalCustomers,
        (SELECT COUNT(DISTINCT CASE WHEN ur.role_id = 2 THEN ur.user_id END)
         FROM user_roles ur
+        JOIN users u ON u.id = ur.user_id
         WHERE ur.role_id IN (1, 2)) AS totalVendors,
        (SELECT COUNT(DISTINCT p.booking_id)
         FROM payment p
@@ -128,10 +130,12 @@ export async function getSalesReportEmailData(): Promise<SalesReportEmailData> {
           AND p.status = 'SUCCESS') AS totalBookings,
        (SELECT COUNT(DISTINCT da.user_id)
         FROM deleted_accounts da
+        JOIN users u ON u.id = da.user_id
         JOIN user_roles ur ON ur.user_id = da.user_id
         WHERE ur.role_id = 1) AS totalDeletedCustomers,
        (SELECT COUNT(DISTINCT da.user_id)
         FROM deleted_accounts da
+        JOIN users u ON u.id = da.user_id
         JOIN user_roles ur ON ur.user_id = da.user_id
         WHERE ur.role_id = 2) AS totalDeletedVendors`
   );
@@ -198,11 +202,12 @@ function buildHtmlSection(report: SalesReportData) {
 function buildOverallTextSection(report: SalesReportEmailData['overall']) {
   return [
     'Overall Totals',
-    `Total customers: ${report.totalCustomers}`,
-    `Total vendors: ${report.totalVendors}`,
+    `Total customers (including deleted accounts): ${report.totalCustomers}`,
+    `Total vendors (including deleted accounts): ${report.totalVendors}`,
     `Total bookings: ${report.totalBookings}`,
-    `Total deleted customers: ${report.totalDeletedCustomers}`,
-    `Total deleted vendors: ${report.totalDeletedVendors}`
+    `Customers who deleted their account: ${report.totalDeletedCustomers}`,
+    `Vendors who deleted their account: ${report.totalDeletedVendors}`,
+    'Note: Deleted-account counts are already included in the customer and vendor totals.'
   ].join('\n');
 }
 
@@ -210,12 +215,15 @@ function buildOverallHtmlSection(report: SalesReportEmailData['overall']) {
   return `
     <h3 style="margin:24px 0 8px">Overall Totals</h3>
     <table cellpadding="10" cellspacing="0" border="0" style="border-collapse:collapse;min-width:420px;margin-bottom:12px">
-      <tr style="background:#f8fafc"><td>Total customers</td><td><strong>${report.totalCustomers}</strong></td></tr>
-      <tr><td>Total vendors</td><td><strong>${report.totalVendors}</strong></td></tr>
+      <tr style="background:#f8fafc"><td>Total customers (including deleted accounts)</td><td><strong>${report.totalCustomers}</strong></td></tr>
+      <tr><td>Total vendors (including deleted accounts)</td><td><strong>${report.totalVendors}</strong></td></tr>
       <tr style="background:#f8fafc"><td>Total bookings</td><td><strong>${report.totalBookings}</strong></td></tr>
-      <tr><td>Total deleted customers</td><td><strong>${report.totalDeletedCustomers}</strong></td></tr>
-      <tr style="background:#f8fafc"><td>Total deleted vendors</td><td><strong>${report.totalDeletedVendors}</strong></td></tr>
+      <tr><td>Customers who deleted their account</td><td><strong>${report.totalDeletedCustomers}</strong></td></tr>
+      <tr style="background:#f8fafc"><td>Vendors who deleted their account</td><td><strong>${report.totalDeletedVendors}</strong></td></tr>
     </table>
+    <p style="margin:0 0 12px;color:#475569;font-size:13px">
+      Deleted-account counts are already included in the customer and vendor totals.
+    </p>
   `;
 }
 

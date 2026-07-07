@@ -16,6 +16,7 @@ function App() {
         <Route path="/home" element={<RequireAuth><HomePage /></RequireAuth>} />
         <Route path="/payment" element={<RequireAuth><HomePage /></RequireAuth>} />
         <Route path="/subscriptions" element={<RequireAuth><HomePage /></RequireAuth>} />
+        <Route path="/vendor-listings" element={<RequireAuth><HomePage /></RequireAuth>} />
         <Route path="/acount" element={<RequireAuth><HomePage /></RequireAuth>} />
         <Route path="/account" element={<RequireAuth><HomePage /></RequireAuth>} />
         <Route path="/" element={<Navigate to="/login" replace />} />
