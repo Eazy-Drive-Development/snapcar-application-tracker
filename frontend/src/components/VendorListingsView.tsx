@@ -15,6 +15,7 @@ type EditTarget = {
 };
 
 type StatusFilter = 'All' | 'Active' | 'Inactive';
+type CarPresenceFilter = 'HasCar' | 'NoCar' | 'OnboardNotListed';
 
 function formatDateTime(value: string | null) {
   if (!value) {
@@ -32,18 +33,6 @@ function formatDateTime(value: string | null) {
     hour: '2-digit',
     minute: '2-digit'
   }).format(new Date(normalizedValue));
-}
-
-function formatCurrency(value: number | null) {
-  if (value === null) {
-    return '-';
-  }
-
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0
-  }).format(value);
 }
 
 function dateToInputValue(value: string | null) {
@@ -66,6 +55,7 @@ function VendorListingsView() {
   const [endDate, setEndDate] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [carPresenceFilter, setCarPresenceFilter] = useState<CarPresenceFilter>('HasCar');
   const [listingStatusFilter, setListingStatusFilter] = useState<StatusFilter>('All');
   const [subscriptionStatusFilter, setSubscriptionStatusFilter] = useState<StatusFilter>('All');
   const [searchTerm, setSearchTerm] = useState('');
@@ -137,6 +127,12 @@ function VendorListingsView() {
 
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const filteredRows = rows.filter((row) => {
+    const isOnboardNotListed = row.carId !== null && row.listingHistoryCount === 0;
+    const matchesCarPresence = (
+      (carPresenceFilter === 'HasCar' && row.carId !== null && !isOnboardNotListed) ||
+      (carPresenceFilter === 'NoCar' && row.carId === null) ||
+      (carPresenceFilter === 'OnboardNotListed' && isOnboardNotListed)
+    );
     const matchesStatus = (
       (listingStatusFilter === 'All' || row.listingStatus === listingStatusFilter) &&
       (subscriptionStatusFilter === 'All' || row.subscriptionDateStatus === subscriptionStatusFilter)
@@ -148,23 +144,8 @@ function VendorListingsView() {
       row.carName
     ].filter(Boolean).join(' ').toLowerCase();
 
-    return matchesStatus && (!normalizedSearch || searchableText.includes(normalizedSearch));
+    return matchesCarPresence && matchesStatus && (!normalizedSearch || searchableText.includes(normalizedSearch));
   });
-
-  const vendorCount = new Set(filteredRows.map((row) => row.vendorId)).size;
-  const carCount = new Set(filteredRows.filter((row) => row.carId !== null).map((row) => row.carId)).size;
-  const listingCount = filteredRows.filter((row) => row.listingId !== null).length;
-  const activeListingCount = filteredRows.filter((row) => row.listingStatus === 'Active').length;
-  const activeSubscriptionCount = new Set(
-    filteredRows
-      .filter((row) => row.subscriptionId !== null && row.subscriptionDateStatus === 'Active')
-      .map((row) => row.vendorId)
-  ).size;
-  const pausedCarCount = new Set(
-    filteredRows
-      .filter((row) => row.carId !== null && row.activePauseListings.length > 0)
-      .map((row) => row.carId)
-  ).size;
 
   return (
     <div className="view-content">
@@ -181,39 +162,8 @@ function VendorListingsView() {
         <div className="status-banner error">{error}</div>
       ) : (
         <main className="view-main">
-          <section className="summary-grid">
-            <article className="summary-card">
-              <h2>Total vendors</h2>
-              <p>{vendorCount.toLocaleString()}</p>
-            </article>
-            <article className="summary-card">
-              <h2>Total cars</h2>
-              <p>{carCount.toLocaleString()}</p>
-            </article>
-            <article className="summary-card">
-              <h2>Total listings</h2>
-              <p>{listingCount.toLocaleString()}</p>
-            </article>
-            <article className="summary-card">
-              <h2>Active listings</h2>
-              <p>{activeListingCount.toLocaleString()}</p>
-            </article>
-            <article className="summary-card">
-              <h2>Active subscriptions</h2>
-              <p>{activeSubscriptionCount.toLocaleString()}</p>
-            </article>
-            <article className="summary-card">
-              <h2>Paused cars</h2>
-              <p>{pausedCarCount.toLocaleString()}</p>
-            </article>
-          </section>
-
           <section className="report-card wide-card">
             <div className="vendor-listings-toolbar">
-              <div>
-                <h2>Vendor car listing list</h2>
-                <p>{filteredRows.length.toLocaleString()} of {rows.length.toLocaleString()} rows</p>
-              </div>
               <div className="filter-controls">
                 <label className="search-filter">
                   <span>Search</span>
@@ -223,6 +173,17 @@ function VendorListingsView() {
                     onChange={(event) => setSearchTerm(event.target.value)}
                     placeholder="Vendor, phone, vehicle, car"
                   />
+                </label>
+                <label>
+                  <span>Vehicle data</span>
+                  <select
+                    value={carPresenceFilter}
+                    onChange={(event) => setCarPresenceFilter(event.target.value as CarPresenceFilter)}
+                  >
+                    <option value="HasCar">Vendor has car</option>
+                    <option value="NoCar">Vendor has no car</option>
+                    <option value="OnboardNotListed">Car onboard but not list</option>
+                  </select>
                 </label>
                 <label>
                   <span>Listing status</span>
@@ -251,6 +212,7 @@ function VendorListingsView() {
                   type="button"
                   onClick={() => {
                     setSearchTerm('');
+                    setCarPresenceFilter('HasCar');
                     setListingStatusFilter('All');
                     setSubscriptionStatusFilter('All');
                   }}
@@ -260,19 +222,13 @@ function VendorListingsView() {
               </div>
             </div>
             <div className="table-scroll">
-              <table>
+              <table className="vendor-listings-table">
                 <thead>
                   <tr>
                     <th>Vendor</th>
-                    <th>Phone</th>
-                    <th>Vehicle no</th>
                     <th>Car name</th>
-                    <th>Listing start</th>
-                    <th>Listing end</th>
-                    <th>Listing status</th>
-                    <th>Subscription end</th>
-                    <th>Subscription amount</th>
-                    <th>Subscription status</th>
+                    <th>Listing</th>
+                    <th>Subscription</th>
                     <th>Pause</th>
                     <th>Actions</th>
                   </tr>
@@ -281,23 +237,38 @@ function VendorListingsView() {
                   {filteredRows.length > 0 ? (
                     filteredRows.map((row) => (
                       <tr key={`${row.vendorId}-${row.carId ?? 'no-car'}-${row.listingId ?? 'no-listing'}`}>
-                        <td>{row.vendorName}</td>
-                        <td>{row.vendorPhoneNumber ?? '-'}</td>
-                        <td>{row.vehicleNumber ?? 'No car found'}</td>
-                        <td>{row.carName ?? '-'}</td>
-                        <td>{formatDateTime(row.listingStartDate)}</td>
-                        <td>{formatDateTime(row.listingEndDate)}</td>
                         <td>
-                          <span className={`status-pill ${getStatusClass(row.listingStatus)}`}>
-                            {row.listingStatus}
-                          </span>
+                          <div className="stacked-table-cell">
+                            <strong>{row.vendorName}</strong>
+                            <span>User ID: {row.vendorId}</span>
+                            <span>Phone: {row.vendorPhoneNumber ?? '-'}</span>
+                          </div>
                         </td>
-                        <td>{formatDateTime(row.subscriptionEndDate)}</td>
-                        <td>{formatCurrency(row.subscriptionAmount)}</td>
                         <td>
-                          <span className={`status-pill ${getStatusClass(row.subscriptionDateStatus)}`}>
-                            {row.subscriptionDateStatus}
-                          </span>
+                          <div className="stacked-table-cell">
+                            <strong>{row.carName ?? '-'}</strong>
+                            <span>Car ID: {row.carId ?? '-'}</span>
+                            <span>{row.vehicleNumber ?? 'No car found'}</span>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="stacked-table-cell">
+                            <span>Listing ID: {row.listingId ?? '-'}</span>
+                            <span>Listing start date: {formatDateTime(row.listingStartDate)}</span>
+                            <span>Listing end date: {formatDateTime(row.listingEndDate)}</span>
+                            <span className={`status-pill ${getStatusClass(row.listingStatus)}`}>
+                              {row.listingStatus}
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="stacked-table-cell">
+                            <span>Subscription ID: {row.subscriptionId ?? '-'}</span>
+                            <span>End: {formatDateTime(row.subscriptionEndDate)}</span>
+                            <span className={`status-pill ${getStatusClass(row.subscriptionDateStatus)}`}>
+                              {row.subscriptionDateStatus}
+                            </span>
+                          </div>
                         </td>
                         <td>
                           {row.activePauseListings.length > 0 ? (
@@ -317,7 +288,6 @@ function VendorListingsView() {
                             <button
                               className="paid-button edit"
                               type="button"
-                              disabled={row.listingId === null}
                               onClick={() => row.listingId !== null && openEditModal({
                                 type: 'listing',
                                 id: row.listingId,
@@ -330,7 +300,6 @@ function VendorListingsView() {
                             <button
                               className="paid-button"
                               type="button"
-                              disabled={row.subscriptionId === null}
                               onClick={() => row.subscriptionId !== null && openEditModal({
                                 type: 'subscription',
                                 id: row.subscriptionId,
@@ -346,7 +315,7 @@ function VendorListingsView() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={12} className="empty-state">
+                      <td colSpan={6} className="empty-state">
                         No vendor listings found for the selected filters.
                       </td>
                     </tr>

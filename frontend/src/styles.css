@@ -35,7 +35,7 @@ textarea {
   overflow-y: auto;
   padding: 32px 20px;
   max-width: 1400px;
-  margin: 0 auto 0 280px;
+  margin: 0 auto 0 232px;
   width: 100%;
 }
 
@@ -43,27 +43,27 @@ textarea {
 .hamburger {
   display: none;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   background: transparent;
   border: none;
   cursor: pointer;
-  padding: 12px;
+  padding: 8px;
   position: fixed;
-  top: 20px;
-  left: 20px;
+  top: 12px;
+  left: 12px;
   z-index: 999;
 }
 
 .hamburger span {
-  width: 28px;
-  height: 3px;
+  width: 22px;
+  height: 2px;
   background: #2563eb;
   border-radius: 2px;
   transition: all 0.3s ease;
 }
 
 .hamburger.active span:nth-child(1) {
-  transform: translateY(9px) rotate(45deg);
+  transform: translateY(6px) rotate(45deg);
 }
 
 .hamburger.active span:nth-child(2) {
@@ -71,12 +71,12 @@ textarea {
 }
 
 .hamburger.active span:nth-child(3) {
-  transform: translateY(-9px) rotate(-45deg);
+  transform: translateY(-6px) rotate(-45deg);
 }
 
 /* Sidebar */
 .sidebar {
-  width: 280px;
+  width: 232px;
   background: #ffffff;
   border-right: 1px solid #e2e8f0;
   overflow-y: auto;
@@ -91,7 +91,7 @@ textarea {
 }
 
 .sidebar-content {
-  padding: 24px 0;
+  padding: 18px 0;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -101,7 +101,7 @@ textarea {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 20px 24px;
+  padding: 0 16px 18px;
   border-bottom: 1px solid #e2e8f0;
 }
 
@@ -125,14 +125,14 @@ textarea {
   flex-direction: column;
   gap: 0;
   flex: 1;
-  padding: 12px 12px;
+  padding: 10px;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
+  gap: 10px;
+  padding: 11px 12px;
   background: transparent;
   border: none;
   border-radius: 12px;
@@ -569,6 +569,54 @@ tbody tr:hover {
   background: #f8fafc;
 }
 
+.stacked-table-cell {
+  display: grid;
+  gap: 4px;
+  min-width: 150px;
+}
+
+.stacked-table-cell strong {
+  color: #0f172a;
+  font-weight: 800;
+}
+
+.stacked-table-cell span {
+  color: #64748b;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.vendor-listings-table {
+  table-layout: fixed;
+}
+
+.vendor-listings-table th,
+.vendor-listings-table td {
+  padding: 10px 8px;
+  vertical-align: top;
+}
+
+.vendor-listings-table th {
+  font-size: 0.86rem;
+}
+
+.vendor-listings-table .stacked-table-cell {
+  min-width: 0;
+}
+
+.vendor-listings-table .status-pill {
+  width: fit-content;
+}
+
+.vendor-listings-table .table-action-stack {
+  align-items: stretch;
+}
+
+.vendor-listings-table .table-action-stack .paid-button {
+  min-width: 96px;
+  padding: 8px 10px;
+}
+
 .paid-button {
   border: none;
   border-radius: 8px;
@@ -926,7 +974,7 @@ tbody tr:hover {
 
   .main-content {
     margin: 0 auto;
-    padding: 80px 20px 32px;
+    padding: 56px 20px 32px;
   }
 
   .summary-grid {
@@ -944,7 +992,7 @@ tbody tr:hover {
 
 @media (max-width: 680px) {
   .main-content {
-    padding: 70px 16px 24px;
+    padding: 52px 16px 24px;
   }
 
   .view-header {

@@ -287,9 +287,11 @@ router.get('/vendor-listings', wrapAsync(async (_req: Request, res: Response) =>
         vendorName: string | null;
         vendorPhoneNumber: string | null;
         carId: number | null;
+        carRowStatus: number | null;
         vehicleNumber: string | null;
         carBrand: string | null;
         carModel: string | null;
+        listingHistoryCount: number;
         activePauseListings: string | null;
         listingId: number | null;
         listingStartDate: Date | null;
@@ -308,16 +310,20 @@ router.get('/vendor-listings', wrapAsync(async (_req: Request, res: Response) =>
          u.name AS vendorName,
          u.phone_number AS vendorPhoneNumber,
          vc.id AS carId,
+         vc.row_status AS carRowStatus,
          vc.vehicle_number AS vehicleNumber,
          car_brand.brand AS carBrand,
          car_model.model_name AS carModel,
+         COALESCE(listing_history.listingHistoryCount, 0) AS listingHistoryCount,
          pause_summary.activePauseListings AS activePauseListings,
          vcl.id AS listingId,
          vcl.start_listing_date AS listingStartDate,
          vcl.end_listing_date AS listingEndDate,
          CASE
            WHEN vcl.id IS NULL OR vcl.end_listing_date IS NULL THEN 'Inactive'
-           WHEN DATE(vcl.end_listing_date) >= CURDATE() THEN 'Active'
+           WHEN COALESCE(vc.row_status, 0) <> 0 THEN 'Inactive'
+           WHEN COALESCE(vcl.row_status, 0) <> 0 OR COALESCE(vcl.is_cancelled, 0) <> 0 THEN 'Inactive'
+           WHEN DATE(vcl.end_listing_date) > CURDATE() THEN 'Active'
            ELSE 'Inactive'
          END AS listingStatus,
          latest_subscription.id AS subscriptionId,
@@ -327,17 +333,23 @@ router.get('/vendor-listings', wrapAsync(async (_req: Request, res: Response) =>
          latest_subscription.status AS subscriptionStatusValue,
          CASE
            WHEN latest_subscription.id IS NULL OR latest_subscription.end_date IS NULL THEN 'Inactive'
+           WHEN COALESCE(latest_subscription.row_status, 0) <> 0 THEN 'Inactive'
+           WHEN UPPER(COALESCE(latest_subscription.status, '')) = 'INACTIVE' THEN 'Inactive'
            WHEN DATE(latest_subscription.end_date) >= CURDATE() THEN 'Active'
            ELSE 'Inactive'
          END AS subscriptionDateStatus
        FROM users u
        JOIN user_roles ur ON ur.user_id = u.id
-        AND ur.role_id = 2
-        AND COALESCE(ur.row_status, 0) = 0
+       AND ur.role_id = 2
+       AND COALESCE(ur.row_status, 0) = 0
        LEFT JOIN vendor_cars vc ON vc.vendor_id = u.id
-        AND COALESCE(vc.row_status, 0) = 0
        LEFT JOIN car_brands car_brand ON car_brand.id = vc.car_brand_id
        LEFT JOIN car_models car_model ON car_model.id = vc.car_model_id
+       LEFT JOIN (
+         SELECT vendor_car_id, COUNT(*) AS listingHistoryCount
+         FROM vendor_car_listings
+         GROUP BY vendor_car_id
+       ) listing_history ON listing_history.vendor_car_id = vc.id
        LEFT JOIN (
          SELECT
            vendor_car_id,
@@ -361,6 +373,14 @@ router.get('/vendor-listings', wrapAsync(async (_req: Request, res: Response) =>
                     PARTITION BY vcl.vendor_car_id
                     ORDER BY
                       CASE
+                        WHEN COALESCE(vcl.row_status, 0) = 0
+                         AND COALESCE(vcl.is_cancelled, 0) = 0
+                         AND vcl.end_listing_date IS NOT NULL
+                         AND DATE(vcl.end_listing_date) > CURDATE()
+                        THEN 0
+                        ELSE 1
+                      END,
+                      CASE
                         WHEN vcl.start_listing_date IS NOT NULL OR vcl.end_listing_date IS NOT NULL THEN 0
                         ELSE 1
                       END,
@@ -368,8 +388,6 @@ router.get('/vendor-listings', wrapAsync(async (_req: Request, res: Response) =>
                       vcl.id DESC
                   ) AS listingRank
            FROM vendor_car_listings vcl
-           WHERE COALESCE(vcl.row_status, 0) = 0
-             AND COALESCE(vcl.is_cancelled, 0) = 0
          ) ranked_listings
          WHERE ranked_listings.listingRank = 1
        ) vcl ON vcl.vendor_car_id = vc.id
@@ -379,7 +397,6 @@ router.get('/vendor-listings', wrapAsync(async (_req: Request, res: Response) =>
          JOIN (
            SELECT vendor_id, MAX(end_date) AS max_end_date
            FROM subscriptions
-           WHERE COALESCE(row_status, 0) = 0
            GROUP BY vendor_id
          ) max_subscription ON max_subscription.vendor_id = s.vendor_id
           AND (
@@ -389,7 +406,6 @@ router.get('/vendor-listings', wrapAsync(async (_req: Request, res: Response) =>
          JOIN (
            SELECT vendor_id, end_date, MAX(id) AS id
            FROM subscriptions
-           WHERE COALESCE(row_status, 0) = 0
            GROUP BY vendor_id, end_date
          ) latest_subscription_id ON latest_subscription_id.id = s.id
        ) latest_subscription ON latest_subscription.vendor_id = u.id
@@ -403,8 +419,10 @@ router.get('/vendor-listings', wrapAsync(async (_req: Request, res: Response) =>
         vendorName: row.vendorName ?? `Vendor #${row.vendorId}`,
         vendorPhoneNumber: row.vendorPhoneNumber,
         carId: row.carId,
+        carRowStatus: row.carRowStatus,
         vehicleNumber: row.vehicleNumber,
         carName: [row.carBrand, row.carModel].filter(Boolean).join(' ') || null,
+        listingHistoryCount: Number(row.listingHistoryCount),
         activePauseListings: typeof row.activePauseListings === 'string'
           ? JSON.parse(row.activePauseListings) as Array<{ id: number; listingId: number | null; startDate: Date | null; endDate: Date | null }>
           : row.activePauseListings ?? [],
@@ -440,17 +458,42 @@ router.patch('/vendor-listings/:listingId/end-date', wrapAsync(async (req: Reque
     return res.status(400).json({ error: 'endDate must be a valid date in YYYY-MM-DD format.' });
   }
 
-  const [result] = await pool.query<ResultSetHeader>(
-    `UPDATE vendor_car_listings
-     SET end_listing_date = ?, modified_on = NOW(6)
-     WHERE id = ?
-       AND COALESCE(row_status, 0) = 0
-       AND COALESCE(is_cancelled, 0) = 0`,
-    [endDate, listingId]
-  );
+  const connection = await pool.getConnection();
 
-  if (result.affectedRows === 0) {
-    return res.status(404).json({ error: 'Active listing not found.' });
+  try {
+    await connection.beginTransaction();
+
+    const [result] = await connection.query<ResultSetHeader>(
+      `UPDATE vendor_car_listings
+       SET end_listing_date = ?,
+           row_status = CASE WHEN DATE(?) > CURDATE() THEN 0 ELSE 1 END,
+           is_cancelled = CASE WHEN DATE(?) > CURDATE() THEN 0 ELSE 1 END,
+           modified_on = NOW(6)
+       WHERE id = ?`,
+      [endDate, endDate, endDate, listingId]
+    );
+
+    if (result.affectedRows === 0) {
+      await connection.rollback();
+      return res.status(404).json({ error: 'Listing not found.' });
+    }
+
+    await connection.query<ResultSetHeader>(
+      `UPDATE vendor_cars vc
+       JOIN vendor_car_listings vcl ON vcl.vendor_car_id = vc.id
+       SET vc.row_status = 0,
+           vc.is_approved = 1,
+           vc.modified_on = NOW(6)
+       WHERE vcl.id = ?`,
+      [listingId]
+    );
+
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
   }
 
   res.json({ id: listingId, endDate });
@@ -470,10 +513,12 @@ router.patch('/subscriptions/:subscriptionId/end-date', wrapAsync(async (req: Re
 
   const [result] = await pool.query<ResultSetHeader>(
     `UPDATE subscriptions
-     SET end_date = ?, modified_on = NOW(6)
-     WHERE id = ?
-       AND COALESCE(row_status, 0) = 0`,
-    [endDate, subscriptionId]
+     SET end_date = ?,
+         row_status = CASE WHEN DATE(?) >= CURDATE() THEN 0 ELSE 1 END,
+         status = CASE WHEN DATE(?) >= CURDATE() THEN 'ACTIVE' ELSE 'INACTIVE' END,
+         modified_on = NOW(6)
+     WHERE id = ?`,
+    [endDate, endDate, endDate, subscriptionId]
   );
 
   if (result.affectedRows === 0) {
