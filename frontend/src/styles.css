@@ -414,6 +414,68 @@ h1 {
   background: linear-gradient(135deg, #dcfce7 0%, #e0f2fe 100%);
 }
 
+.payment-summary-panel {
+  display: grid;
+  width: 100%;
+  box-sizing: border-box;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid #dbeafe;
+  border-radius: 22px;
+  background: linear-gradient(135deg, #f8fafc 0%, #eef6ff 100%);
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.07);
+}
+
+.payment-summary-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
+.payment-summary-heading h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 1.05rem;
+}
+
+.payment-summary-heading p {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.payment-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(150px, 1fr));
+  gap: 14px;
+}
+
+.payment-summary-grid .summary-card {
+  min-height: 118px;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+
+.payment-summary-grid .summary-card h2 {
+  min-height: 2.4em;
+  margin-bottom: 12px;
+  line-height: 1.25;
+}
+
+.payment-summary-grid .summary-card p {
+  font-size: clamp(1rem, 1.05vw, 1.35rem);
+  line-height: 1.2;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.payment-summary-grid .account-total-card {
+  border-color: #86efac;
+}
+
 .account-summary-grid {
   display: grid;
   align-items: start;
@@ -534,7 +596,7 @@ h1 {
 
 .payment-filter-row {
   display: grid;
-  grid-template-columns: repeat(5, minmax(120px, 1fr)) auto auto;
+  grid-template-columns: repeat(5, minmax(120px, 1fr)) auto auto auto;
   align-items: end;
   gap: 12px;
 }
@@ -764,6 +826,17 @@ tbody tr:hover {
 
 .payment-modal.pause-modal {
   width: min(720px, 100%);
+}
+
+.payment-modal.ajay-report-modal {
+  width: min(560px, 100%);
+}
+
+.ajay-report-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
 }
 
 .pause-listing-table table {
@@ -1098,6 +1171,10 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 
+  .payment-summary-grid {
+    grid-template-columns: repeat(3, minmax(150px, 1fr));
+  }
+
   .account-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1137,6 +1214,10 @@ tbody tr:hover {
   }
 
   .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .payment-summary-grid {
     grid-template-columns: 1fr;
   }
 

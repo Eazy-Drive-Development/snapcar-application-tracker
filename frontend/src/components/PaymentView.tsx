@@ -61,6 +61,18 @@ function getSnapcarPaidToCustomer(payment: VendorPayout) {
   return payment.gatewayPaymentAmount === null ? null : payment.gatewayPaymentAmount - payment.platformCharges;
 }
 
+function getProfitAmount(payment: VendorPayout) {
+  if (payment.paymentTrackerId === null) {
+    return null;
+  }
+
+  if (payment.gatewayPaymentAmount !== null && payment.paidAmount !== null) {
+    return Number((payment.gatewayPaymentAmount - payment.paidAmount).toFixed(2));
+  }
+
+  return payment.profit;
+}
+
 function formatDateTime(value: string | null) {
   if (!value) {
     return 'Not set';
@@ -107,6 +119,19 @@ function formatExportAmount(value: number) {
   return Number(value.toFixed(2));
 }
 
+function getExportSortTime(payment: VendorPayout) {
+  const parsedDate = payment.bookingStartDate ? new Date(payment.bookingStartDate).getTime() : Number.NaN;
+  return Number.isNaN(parsedDate) ? 0 : parsedDate;
+}
+
+function getExcelCellType(value: string | number) {
+  return typeof value === 'number' ? 'Number' : 'String';
+}
+
+function getExcelCell(value: string | number, styleId: string) {
+  return `<Cell ss:StyleID="${styleId}"><Data ss:Type="${getExcelCellType(value)}">${escapeExcelCell(value)}</Data></Cell>`;
+}
+
 function PaymentView() {
   const [isLoading, setIsLoading] = useState(true);
   const [payments, setPayments] = useState<VendorPayout[]>([]);
@@ -124,6 +149,9 @@ function PaymentView() {
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<PaymentStatusFilter>('All');
   const [bookingStatusFilter, setBookingStatusFilter] = useState<BookingStatusFilter>('All');
   const [deliveryTypeFilter, setDeliveryTypeFilter] = useState<DeliveryTypeFilter>('All');
+  const [isAjayReportModalOpen, setIsAjayReportModalOpen] = useState(false);
+  const [ajayReportFromDate, setAjayReportFromDate] = useState('');
+  const [ajayReportToDate, setAjayReportToDate] = useState('');
 
   useEffect(() => {
     const loadPendingPayments = async () => {
@@ -163,11 +191,13 @@ function PaymentView() {
 
   const totalAmount = filteredPayments.reduce((sum, payment) => sum + payment.amount, 0);
   const totalRemainingAmount = filteredPayments.reduce((sum, payment) => (
-    payment.paymentTrackerId === null ? sum + payment.amount : sum
+    payment.paymentTrackerId === null ? sum + (getSnapcarPaidToCustomer(payment) ?? 0) : sum
   ), 0);
-  const totalProfit = filteredPayments.reduce((sum, payment) => (
-    payment.profit === null ? sum : sum + payment.profit
+  const totalActualAmountPaid = filteredPayments.reduce((sum, payment) => (
+    payment.paymentTrackerId !== null ? sum + (payment.paidAmount ?? 0) : sum
   ), 0);
+  const overallInAccount = totalAmount - totalActualAmountPaid;
+  const totalProfit = filteredPayments.reduce((sum, payment) => sum + (getProfitAmount(payment) ?? 0), 0);
 
   const openPaymentModal = (payment: VendorPayout) => {
     const isCancelled = isCancelledStatus(payment.bookingStatus);
@@ -197,10 +227,17 @@ function PaymentView() {
     setDetailPayment(null);
   };
 
+  const closeAjayReportModal = () => {
+    setIsAjayReportModalOpen(false);
+  };
+
   const handleDownloadExcel = () => {
-    const exportRows = filteredPayments.map((payment) => {
+    const exportRows = [...filteredPayments].sort((firstPayment, secondPayment) => {
+      const timeDifference = getExportSortTime(firstPayment) - getExportSortTime(secondPayment);
+      return timeDifference === 0 ? firstPayment.paymentId - secondPayment.paymentId : timeDifference;
+    }).map((payment) => {
       const overallTotal = payment.totalAmount + payment.platformCharges;
-      const calculatedAdvanceAmount = getCalculatedAdvanceAmount(payment);
+      const customerPaidToVendor = getRemainingVendorAmount(payment);
       const snapcarPaidToCustomer = getSnapcarPaidToCustomer(payment);
 
       return {
@@ -209,17 +246,20 @@ function PaymentView() {
         toDate: formatDateTime(payment.bookingEndDate),
         vendorName: payment.vendorName,
         customerName: payment.customerName,
+        paymentStatus: payment.paymentTrackerId === null ? 'Unpaid' : 'Paid',
         overallTotal,
         advanceAmountPaid: payment.gatewayPaymentAmount,
+        customerPaidToVendor,
         advanceAmountInDb: payment.amount,
         snapcarPaidToCustomer,
         amountPaid: payment.paymentTrackerId === null ? null : payment.paidAmount,
-        profit: payment.paymentTrackerId === null ? null : payment.profit
+        profit: getProfitAmount(payment)
       };
     });
     const totals = exportRows.reduce((sum, row) => ({
       overallTotal: sum.overallTotal + row.overallTotal,
       advanceAmountPaid: sum.advanceAmountPaid + (row.advanceAmountPaid ?? 0),
+      customerPaidToVendor: sum.customerPaidToVendor + (row.customerPaidToVendor ?? 0),
       advanceAmountInDb: sum.advanceAmountInDb + row.advanceAmountInDb,
       snapcarPaidToCustomer: sum.snapcarPaidToCustomer + (row.snapcarPaidToCustomer ?? 0),
       amountPaid: sum.amountPaid + (row.amountPaid ?? 0),
@@ -227,6 +267,7 @@ function PaymentView() {
     }), {
       overallTotal: 0,
       advanceAmountPaid: 0,
+      customerPaidToVendor: 0,
       advanceAmountInDb: 0,
       snapcarPaidToCustomer: 0,
       amountPaid: 0,
@@ -238,47 +279,161 @@ function PaymentView() {
       'To date',
       'Vendor name',
       'Customer name',
+      'Payment status',
       'Overall total',
       'Advance amount paid',
+      'customer paid to vendor',
       'Advance amount in DB',
       'Snapcar paid',
-      'Amount paid',
+      'Actual amount paid',
       'Profit'
     ];
-    const rows = [
-      headers,
-      ...exportRows.map((row) => [
-        row.bookingId,
-        row.fromDate,
-        row.toDate,
-        row.vendorName,
-        row.customerName,
-        formatExportAmount(row.overallTotal),
-        row.advanceAmountPaid === null ? '' : formatExportAmount(row.advanceAmountPaid),
-        formatExportAmount(row.advanceAmountInDb),
-        row.snapcarPaidToCustomer === null ? '' : formatExportAmount(row.snapcarPaidToCustomer),
-        row.amountPaid === null ? '' : formatExportAmount(row.amountPaid),
-        row.profit === null ? '' : formatExportAmount(row.profit)
-      ]),
-      [
-        'Total',
-        '',
-        '',
-        '',
-        '',
-        formatExportAmount(totals.overallTotal),
-        formatExportAmount(totals.advanceAmountPaid),
-        formatExportAmount(totals.advanceAmountInDb),
-        formatExportAmount(totals.snapcarPaidToCustomer),
-        formatExportAmount(totals.amountPaid),
-        formatExportAmount(totals.profit)
-      ]
+    const dataRows = exportRows.map((row) => [
+      row.bookingId,
+      row.fromDate,
+      row.toDate,
+      row.vendorName,
+      row.customerName,
+      row.paymentStatus,
+      formatExportAmount(row.overallTotal),
+      row.advanceAmountPaid === null ? '' : formatExportAmount(row.advanceAmountPaid),
+      row.customerPaidToVendor === null ? '' : formatExportAmount(row.customerPaidToVendor),
+      formatExportAmount(row.advanceAmountInDb),
+      row.snapcarPaidToCustomer === null ? '' : formatExportAmount(row.snapcarPaidToCustomer),
+      row.amountPaid === null ? '' : formatExportAmount(row.amountPaid),
+      row.profit === null ? '' : formatExportAmount(row.profit)
+    ]);
+    const totalRow = [
+      'Total',
+      '',
+      '',
+      '',
+      '',
+      '',
+      formatExportAmount(totals.overallTotal),
+      formatExportAmount(totals.advanceAmountPaid),
+      formatExportAmount(totals.customerPaidToVendor),
+      formatExportAmount(totals.advanceAmountInDb),
+      formatExportAmount(totals.snapcarPaidToCustomer),
+      formatExportAmount(totals.amountPaid),
+      formatExportAmount(totals.profit)
     ];
-    const tableRows = rows.map((row) => (
-      `<tr>${row.map((cell) => `<td>${escapeExcelCell(cell)}</td>`).join('')}</tr>`
+    const amountColumnIndexes = new Set([6, 7, 8, 9, 10, 11, 12]);
+    const headerRow = `<Row ss:Height="28">${headers.map((header) => getExcelCell(header, 'Header')).join('')}</Row>`;
+    const bodyRows = dataRows.map((row) => (
+      `<Row>${row.map((cell, index) => {
+        const statusStyle = index === 5 && cell === 'Paid' ? 'StatusPaid' : index === 5 ? 'StatusUnpaid' : null;
+        const styleId = statusStyle ?? (amountColumnIndexes.has(index) ? 'Amount' : 'Cell');
+        return getExcelCell(cell, styleId);
+      }).join('')}</Row>`
     )).join('');
-    const html = `<!doctype html><html><head><meta charset="utf-8" /></head><body><table>${tableRows}</table></body></html>`;
-    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const totalExcelRow = `<Row ss:Height="24">${totalRow.map((cell, index) => (
+      getExcelCell(cell, index === 0 ? 'TotalLabel' : amountColumnIndexes.has(index) ? 'TotalAmount' : 'Total')
+    )).join('')}</Row>`;
+    const statusValidationRange = exportRows.length > 0
+      ? `<x:DataValidation>
+          <x:Range>R3C6:R${exportRows.length + 2}C6</x:Range>
+          <x:Type>List</x:Type>
+          <x:Value>"Paid,Unpaid"</x:Value>
+        </x:DataValidation>`
+      : '';
+    const workbook = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+  <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
+    <Title>Payment report</Title>
+  </DocumentProperties>
+  <Styles>
+    <Style ss:ID="Default" ss:Name="Normal">
+      <Alignment ss:Vertical="Center" ss:WrapText="1"/>
+      <Font ss:FontName="Calibri" ss:Size="11"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+        <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+        <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+      </Borders>
+    </Style>
+    <Style ss:ID="Title">
+      <Font ss:FontName="Calibri" ss:Size="16" ss:Bold="1" ss:Color="#0F172A"/>
+      <Interior ss:Color="#E0F2FE" ss:Pattern="Solid"/>
+      <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+    </Style>
+    <Style ss:ID="Header">
+      <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1" ss:Color="#FFFFFF"/>
+      <Interior ss:Color="#1D4ED8" ss:Pattern="Solid"/>
+      <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#1E3A8A"/>
+        <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#1E3A8A"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#1E3A8A"/>
+        <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#1E3A8A"/>
+      </Borders>
+    </Style>
+    <Style ss:ID="Cell" ss:Parent="Default"/>
+    <Style ss:ID="Amount" ss:Parent="Default">
+      <NumberFormat ss:Format="0.00"/>
+      <Alignment ss:Horizontal="Right" ss:Vertical="Center"/>
+    </Style>
+    <Style ss:ID="StatusPaid" ss:Parent="Default">
+      <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1" ss:Color="#166534"/>
+      <Interior ss:Color="#DCFCE7" ss:Pattern="Solid"/>
+      <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+    </Style>
+    <Style ss:ID="StatusUnpaid" ss:Parent="Default">
+      <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1" ss:Color="#92400E"/>
+      <Interior ss:Color="#FEF3C7" ss:Pattern="Solid"/>
+      <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+    </Style>
+    <Style ss:ID="Total" ss:Parent="Default">
+      <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1"/>
+      <Interior ss:Color="#DBEAFE" ss:Pattern="Solid"/>
+    </Style>
+    <Style ss:ID="TotalLabel" ss:Parent="Total">
+      <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+    </Style>
+    <Style ss:ID="TotalAmount" ss:Parent="Total">
+      <NumberFormat ss:Format="0.00"/>
+      <Alignment ss:Horizontal="Right" ss:Vertical="Center"/>
+    </Style>
+  </Styles>
+  <Worksheet ss:Name="Payments">
+    <Table>
+      <Column ss:Width="80"/>
+      <Column ss:Width="145"/>
+      <Column ss:Width="145"/>
+      <Column ss:Width="140"/>
+      <Column ss:Width="140"/>
+      <Column ss:Width="105"/>
+      <Column ss:Width="110"/>
+      <Column ss:Width="120"/>
+      <Column ss:Width="130"/>
+      <Column ss:Width="120"/>
+      <Column ss:Width="110"/>
+      <Column ss:Width="120"/>
+      <Column ss:Width="90"/>
+      <Row ss:Height="30">
+        <Cell ss:MergeAcross="${headers.length - 1}" ss:StyleID="Title"><Data ss:Type="String">Payment Report</Data></Cell>
+      </Row>
+      ${headerRow}
+      ${bodyRows}
+      ${totalExcelRow}
+    </Table>
+    <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+      <FreezePanes/>
+      <FrozenNoSplit/>
+      <SplitHorizontal>2</SplitHorizontal>
+      <TopRowBottomPane>2</TopRowBottomPane>
+      <ActivePane>2</ActivePane>
+      ${statusValidationRange}
+    </WorksheetOptions>
+  </Worksheet>
+</Workbook>`;
+    const blob = new Blob([workbook], { type: 'application/vnd.ms-excel;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -287,6 +442,180 @@ function PaymentView() {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadAjayExcel = () => {
+    const ajayRows = payments.filter((payment) => {
+      const bookingDate = getDateInputValue(payment.bookingStartDate);
+      const matchesVendor = payment.vendorName.trim().toLowerCase() === 'ajay patil';
+      const matchesFromDate = !ajayReportFromDate || (bookingDate !== '' && bookingDate >= ajayReportFromDate);
+      const matchesToDate = !ajayReportToDate || (bookingDate !== '' && bookingDate <= ajayReportToDate);
+
+      return matchesVendor && matchesFromDate && matchesToDate;
+    }).sort((firstPayment, secondPayment) => {
+      const timeDifference = getExportSortTime(firstPayment) - getExportSortTime(secondPayment);
+      return timeDifference === 0 ? firstPayment.paymentId - secondPayment.paymentId : timeDifference;
+    }).map((payment) => {
+      const startTime = payment.bookingStartDate ? new Date(payment.bookingStartDate).getTime() : Number.NaN;
+      const endTime = payment.bookingEndDate ? new Date(payment.bookingEndDate).getTime() : Number.NaN;
+      const totalDuration = Number.isNaN(startTime) || Number.isNaN(endTime)
+        ? ''
+        : formatExportAmount(Math.max(0, (endTime - startTime) / (1000 * 60 * 60)));
+      const customerPaidToVendor = getRemainingVendorAmount(payment);
+
+      return [
+        formatDateTime(payment.bookingStartDate),
+        formatDateTime(payment.bookingEndDate),
+        totalDuration,
+        payment.customerName,
+        customerPaidToVendor === null ? '' : formatExportAmount(customerPaidToVendor),
+        'Snapcar',
+        payment.bookingStatus,
+        customerPaidToVendor === null ? '' : formatExportAmount(customerPaidToVendor),
+        ''
+      ];
+    });
+    const ajayHeaders = [
+      'From Date',
+      'To Date',
+      'Total Duration in Hr.',
+      'Customer name',
+      'Total Price',
+      'Refferal',
+      'Trip status',
+      'Total Amount in Account - Cash',
+      'Remark'
+    ];
+    const amountColumnIndexes = new Set([2, 4, 7]);
+    const headerRow = `<Row ss:Height="28">${ajayHeaders.map((header) => getExcelCell(header, 'Header')).join('')}</Row>`;
+    const bodyRows = ajayRows.map((row) => (
+      `<Row>${row.map((cell, index) => (
+        getExcelCell(cell, amountColumnIndexes.has(index) && cell !== '' ? 'Amount' : 'Cell')
+      )).join('')}</Row>`
+    )).join('');
+    const totalPrice = ajayRows.reduce((sum, row) => sum + (typeof row[4] === 'number' ? row[4] : 0), 0);
+    const totalCash = ajayRows.reduce((sum, row) => sum + (typeof row[7] === 'number' ? row[7] : 0), 0);
+    const totalRow = [
+      'Total',
+      '',
+      '',
+      '',
+      formatExportAmount(totalPrice),
+      '',
+      '',
+      formatExportAmount(totalCash),
+      ''
+    ];
+    const totalExcelRow = `<Row ss:Height="24">${totalRow.map((cell, index) => (
+      getExcelCell(cell, index === 0 ? 'TotalLabel' : amountColumnIndexes.has(index) ? 'TotalAmount' : 'Total')
+    )).join('')}</Row>`;
+    const tripStatusOptions = Array.from(new Set([
+      ...payments.map((payment) => payment.bookingStatus).filter(Boolean),
+      'Ongoing',
+      'Cancelled',
+      'Complete successfully',
+      'Cancelled by user',
+      'Booking Confirmed'
+    ])).join(',');
+    const tripStatusValidationRange = ajayRows.length > 0
+      ? `<x:DataValidation>
+          <x:Range>R3C7:R${ajayRows.length + 2}C7</x:Range>
+          <x:Type>List</x:Type>
+          <x:Value>"${escapeExcelCell(tripStatusOptions)}"</x:Value>
+        </x:DataValidation>`
+      : '';
+    const workbook = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+  <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
+    <Title>Ajay Patil trip report</Title>
+  </DocumentProperties>
+  <Styles>
+    <Style ss:ID="Default" ss:Name="Normal">
+      <Alignment ss:Vertical="Center" ss:WrapText="1"/>
+      <Font ss:FontName="Calibri" ss:Size="11"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+        <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+        <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+      </Borders>
+    </Style>
+    <Style ss:ID="Title">
+      <Font ss:FontName="Calibri" ss:Size="16" ss:Bold="1" ss:Color="#0F172A"/>
+      <Interior ss:Color="#E0F2FE" ss:Pattern="Solid"/>
+      <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+    </Style>
+    <Style ss:ID="Header">
+      <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1" ss:Color="#FFFFFF"/>
+      <Interior ss:Color="#1D4ED8" ss:Pattern="Solid"/>
+      <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#1E3A8A"/>
+        <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#1E3A8A"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#1E3A8A"/>
+        <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#1E3A8A"/>
+      </Borders>
+    </Style>
+    <Style ss:ID="Cell" ss:Parent="Default"/>
+    <Style ss:ID="Amount" ss:Parent="Default">
+      <NumberFormat ss:Format="0.00"/>
+      <Alignment ss:Horizontal="Right" ss:Vertical="Center"/>
+    </Style>
+    <Style ss:ID="Total" ss:Parent="Default">
+      <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1"/>
+      <Interior ss:Color="#DBEAFE" ss:Pattern="Solid"/>
+    </Style>
+    <Style ss:ID="TotalLabel" ss:Parent="Total">
+      <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+    </Style>
+    <Style ss:ID="TotalAmount" ss:Parent="Total">
+      <NumberFormat ss:Format="0.00"/>
+      <Alignment ss:Horizontal="Right" ss:Vertical="Center"/>
+    </Style>
+  </Styles>
+  <Worksheet ss:Name="Ajay Patil Trips">
+    <Table>
+      <Column ss:Width="150"/>
+      <Column ss:Width="150"/>
+      <Column ss:Width="110"/>
+      <Column ss:Width="150"/>
+      <Column ss:Width="110"/>
+      <Column ss:Width="90"/>
+      <Column ss:Width="90"/>
+      <Column ss:Width="145"/>
+      <Column ss:Width="160"/>
+      <Row ss:Height="30">
+        <Cell ss:MergeAcross="${ajayHeaders.length - 1}" ss:StyleID="Title"><Data ss:Type="String">Ajay Patil Trip Report</Data></Cell>
+      </Row>
+      ${headerRow}
+      ${bodyRows}
+      ${totalExcelRow}
+    </Table>
+    <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+      <FreezePanes/>
+      <FrozenNoSplit/>
+      <SplitHorizontal>2</SplitHorizontal>
+      <TopRowBottomPane>2</TopRowBottomPane>
+      <ActivePane>2</ActivePane>
+      ${tripStatusValidationRange}
+    </WorksheetOptions>
+  </Worksheet>
+</Workbook>`;
+    const blob = new Blob([workbook], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `ajay-patil-trip-report-${new Date().toISOString().slice(0, 10)}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    closeAjayReportModal();
   };
 
   const handlePaymentSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -375,7 +704,14 @@ function PaymentView() {
         <div className="status-banner error">{error}</div>
       ) : (
         <main className="view-main">
-          <section className="summary-grid">
+          <section className="payment-summary-panel">
+            <div className="payment-summary-heading">
+              <div>
+                <h2>Overall totals</h2>
+                <p>Based on the current payment filters.</p>
+              </div>
+            </div>
+            <div className="summary-grid payment-summary-grid">
             <article className="summary-card">
               <h2>Total payments</h2>
               <p>{filteredPayments.length}</p>
@@ -389,9 +725,18 @@ function PaymentView() {
               <p>{formatCurrency(totalRemainingAmount)}</p>
             </article>
             <article className="summary-card">
+              <h2>Total actual amount paid</h2>
+              <p>{formatCurrency(totalActualAmountPaid, 2)}</p>
+            </article>
+            <article className="summary-card account-total-card">
+              <h2>Overall in account</h2>
+              <p>{formatCurrency(overallInAccount, 2)}</p>
+            </article>
+            <article className="summary-card">
               <h2>Total profit</h2>
               <p>{formatCurrency(totalProfit, 2)}</p>
             </article>
+            </div>
           </section>
 
           <section className="report-card wide-card">
@@ -480,6 +825,13 @@ function PaymentView() {
                 >
                   Download Excel
                 </button>
+                <button
+                  className="button-secondary compact-button"
+                  type="button"
+                  onClick={() => setIsAjayReportModalOpen(true)}
+                >
+                  Download our Excel
+                </button>
               </div>
               <label className="search-filter payment-search-filter">
                 <span>Search vendor</span>
@@ -525,7 +877,7 @@ function PaymentView() {
                           <td>{formatNullableCurrency(row.gatewayPaymentAmount)}</td>
                           <td>{formatNullableCurrency(getSnapcarPaidToCustomer(row))}</td>
                           <td>{isPaid && row.paidAmount !== null ? formatCurrency(row.paidAmount, 2) : '-'}</td>
-                          <td>{isPaid ? formatNullableCurrency(row.profit) : '-'}</td>
+                          <td>{formatNullableCurrency(getProfitAmount(row))}</td>
                           <td>
                             <div className="table-action-stack">
                               <button
@@ -738,6 +1090,71 @@ function PaymentView() {
             <div className="modal-actions">
               <button className="button-primary" type="button" onClick={closeDetailModal}>
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isAjayReportModalOpen && (
+        <div className="modal-overlay" role="presentation" onClick={closeAjayReportModal}>
+          <div
+            className="payment-modal ajay-report-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ajay-report-modal-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-header">
+              <div>
+                <h2 id="ajay-report-modal-title">Ajay Patil trip report</h2>
+                <p>Select dates or leave blank for all entries.</p>
+              </div>
+              <button className="modal-close" type="button" onClick={closeAjayReportModal} aria-label="Close Ajay report popup">
+                x
+              </button>
+            </div>
+
+            <div className="ajay-report-fields">
+              <label className="form-field">
+                <span>From date</span>
+                <input
+                  type="date"
+                  value={ajayReportFromDate}
+                  onChange={(event) => setAjayReportFromDate(event.target.value)}
+                  onClick={(event) => event.currentTarget.showPicker()}
+                  onFocus={(event) => event.currentTarget.showPicker()}
+                  onKeyDown={(event) => event.preventDefault()}
+                  onPaste={(event) => event.preventDefault()}
+                />
+              </label>
+              <label className="form-field">
+                <span>To date</span>
+                <input
+                  type="date"
+                  value={ajayReportToDate}
+                  onChange={(event) => setAjayReportToDate(event.target.value)}
+                  onClick={(event) => event.currentTarget.showPicker()}
+                  onFocus={(event) => event.currentTarget.showPicker()}
+                  onKeyDown={(event) => event.preventDefault()}
+                  onPaste={(event) => event.preventDefault()}
+                />
+              </label>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                className="button-secondary"
+                type="button"
+                onClick={() => {
+                  setAjayReportFromDate('');
+                  setAjayReportToDate('');
+                }}
+              >
+                Clear dates
+              </button>
+              <button className="button-primary" type="button" onClick={handleDownloadAjayExcel}>
+                Download Excel
               </button>
             </div>
           </div>
