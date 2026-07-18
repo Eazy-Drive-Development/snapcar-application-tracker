@@ -80,6 +80,68 @@ const isMissingAccountTransactionsTableError = (error: unknown) => (
   (error as { message: string }).message.includes('account_transactions')
 );
 
+type CashfreePaymentResponse = {
+  cf_payment_id?: string | number;
+  order_id?: string;
+  payment_amount?: string | number;
+  payment_status?: string;
+  payment_gateway_details?: {
+    gateway_payment_id?: string | number;
+  };
+};
+
+const getCashfreeHeaders = () => {
+  const clientId = process.env.CASHFREE_CLIENT_ID;
+  const clientSecret = process.env.CASHFREE_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    return null;
+  }
+
+  return {
+    'x-client-id': clientId,
+    'x-client-secret': clientSecret,
+    'x-api-version': process.env.CASHFREE_API_VERSION ?? '2025-01-01'
+  };
+};
+
+const getCashfreeGatewayAmount = async (orderId: string | null, gatewayPaymentId: string | null) => {
+  if (!orderId) {
+    return null;
+  }
+
+  const headers = getCashfreeHeaders();
+  if (!headers) {
+    return null;
+  }
+
+  const baseUrl = process.env.CASHFREE_BASE_URL ?? 'https://api.cashfree.com/pg';
+  const response = await fetch(`${baseUrl}/orders/${encodeURIComponent(orderId)}/payments`, { headers });
+
+  if (!response.ok) {
+    console.warn(`Cashfree payment lookup failed for order ${orderId}: ${response.status}`);
+    return null;
+  }
+
+  const payments = await response.json() as CashfreePaymentResponse[];
+  if (!Array.isArray(payments) || payments.length === 0) {
+    return null;
+  }
+
+  const normalizedGatewayPaymentId = gatewayPaymentId ? String(gatewayPaymentId) : null;
+  const matchingPayment = normalizedGatewayPaymentId
+    ? payments.find((payment) => (
+        String(payment.cf_payment_id ?? '') === normalizedGatewayPaymentId ||
+        String(payment.payment_gateway_details?.gateway_payment_id ?? '') === normalizedGatewayPaymentId
+      ))
+    : null;
+  const successfulPayment = payments.find((payment) => payment.payment_status === 'SUCCESS');
+  const selectedPayment = matchingPayment ?? successfulPayment ?? payments[0];
+  const parsedAmount = Number(selectedPayment.payment_amount);
+
+  return Number.isFinite(parsedAmount) ? parsedAmount : null;
+};
+
 router.get('/daily-bookings', wrapAsync(async (req: Request, res: Response) => {
   const days = parseDays(req.query.days as string);
 
@@ -140,6 +202,8 @@ router.get('/pending-payments', wrapAsync(async (_req: Request, res: Response) =
       Array<QueryRow<{
         paymentId: number;
         bookingId: number | null;
+        gatewayOrderId: string | null;
+        gatewayPaymentId: string | null;
         vendorId: number | null;
         userId: number | null;
         vendorName: string;
@@ -149,6 +213,7 @@ router.get('/pending-payments', wrapAsync(async (_req: Request, res: Response) =
         amount: number;
         totalAmount: number;
         bookingStatus: string | null;
+        deliveryType: string | null;
         bookingStartDate: Date | null;
         bookingEndDate: Date | null;
         platformCharges: number;
@@ -162,6 +227,8 @@ router.get('/pending-payments', wrapAsync(async (_req: Request, res: Response) =
     >(
       `SELECT p.id AS paymentId,
               p.booking_id AS bookingId,
+              p.gateway_order_id AS gatewayOrderId,
+              p.gateway_payment_id AS gatewayPaymentId,
               p.vendor_id AS vendorId,
               cb.user_id AS userId,
               COALESCE(u.name, CONCAT('Vendor #', p.vendor_id), 'Unknown vendor') AS vendorName,
@@ -171,10 +238,11 @@ router.get('/pending-payments', wrapAsync(async (_req: Request, res: Response) =
               p.amount AS amount,
               COALESCE(cb.price, 0) AS totalAmount,
               cb.status AS bookingStatus,
+              dt.delivery_type AS deliveryType,
               cb.start_date_time AS bookingStartDate,
               cb.end_date_time AS bookingEndDate,
               234.82 AS platformCharges,
-              p.amount - 234.82 AS remainingAmount,
+              COALESCE(cb.price, 0) + 234.82 - ((COALESCE(cb.price, 0) * 0.3) + 234.82) AS remainingAmount,
               ptr.id AS paymentTrackerId,
               ptr.payto AS paymentPayto,
               ptr.amount_paid AS paidAmount,
@@ -183,6 +251,7 @@ router.get('/pending-payments', wrapAsync(async (_req: Request, res: Response) =
        FROM payment p
        LEFT JOIN users u ON u.id = p.vendor_id
        LEFT JOIN car_bookings cb ON cb.id = p.booking_id
+       LEFT JOIN delivery_types dt ON dt.id = cb.delivery_type
        LEFT JOIN users customer ON customer.id = cb.user_id
        LEFT JOIN (
          SELECT pt.*
@@ -198,12 +267,19 @@ router.get('/pending-payments', wrapAsync(async (_req: Request, res: Response) =
        ORDER BY p.created_on DESC, p.id DESC`
     );
 
-    res.json({
-      data: rows.map((row) => ({
+    const data = await Promise.all(rows.map(async (row) => {
+      const gatewayPaymentAmount = await getCashfreeGatewayAmount(row.gatewayOrderId, row.gatewayPaymentId);
+      const paidAmount = row.paidAmount === null ? null : Number(row.paidAmount);
+      const profit = gatewayPaymentAmount === null || paidAmount === null
+        ? null
+        : Number((gatewayPaymentAmount - paidAmount).toFixed(2));
+
+      return {
         vendorId: row.vendorId,
         userId: row.userId,
         paymentId: row.paymentId,
         bookingId: row.bookingId,
+        gatewayPaymentAmount,
         vendorName: row.vendorName,
         vendorPhoneNumber: row.vendorPhoneNumber,
         customerName: row.customerName,
@@ -211,17 +287,20 @@ router.get('/pending-payments', wrapAsync(async (_req: Request, res: Response) =
         amount: Number(row.amount),
         totalAmount: Number(row.totalAmount),
         bookingStatus: row.bookingStatus ?? 'Unknown',
+        deliveryType: row.deliveryType ?? 'Not set',
         bookingStartDate: row.bookingStartDate,
         bookingEndDate: row.bookingEndDate,
         platformCharges: Number(row.platformCharges),
         remainingAmount: Number(row.remainingAmount),
         paymentTrackerId: row.paymentTrackerId,
         paymentPayto: row.paymentPayto,
-        paidAmount: row.paidAmount === null ? null : Number(row.paidAmount),
-        profit: row.profit === null ? null : Number(row.profit),
+        paidAmount,
+        profit,
         paymentNotes: row.paymentNotes
-      }))
-    });
+      };
+    }));
+
+    res.json({ data });
   } catch (error) {
     if (isMissingTableError(error)) {
       return res.json({ data: [] });
@@ -756,8 +835,14 @@ router.post('/payment-tracker', wrapAsync(async (req: Request, res: Response) =>
     return res.status(400).json({ error: 'Notes must be 200 characters or fewer.' });
   }
 
-  const [paymentRows] = await pool.query<Array<QueryRow<{ amount: number }>>>(
-    `SELECT amount
+  const [paymentRows] = await pool.query<Array<QueryRow<{
+    amount: number;
+    gatewayOrderId: string | null;
+    gatewayPaymentId: string | null;
+  }>>>(
+    `SELECT amount,
+            gateway_order_id AS gatewayOrderId,
+            gateway_payment_id AS gatewayPaymentId
      FROM payment
      WHERE id = ?
      LIMIT 1`,
@@ -770,7 +855,13 @@ router.post('/payment-tracker', wrapAsync(async (req: Request, res: Response) =>
     return res.status(404).json({ error: 'Payment record not found.' });
   }
 
-  const profit = Number(payment.amount) - amountPaid;
+  const gatewayPaymentAmount = await getCashfreeGatewayAmount(payment.gatewayOrderId, payment.gatewayPaymentId);
+
+  if (gatewayPaymentAmount === null) {
+    return res.status(400).json({ error: 'Unable to fetch payment gateway amount for this payment.' });
+  }
+
+  const profit = Number((gatewayPaymentAmount - amountPaid).toFixed(2));
 
   const [existingRows] = await pool.query<Array<QueryRow<{ id: number }>>>(
     `SELECT id

@@ -521,6 +521,42 @@ h1 {
   min-width: 260px;
 }
 
+.payment-filter-controls {
+  display: grid;
+  align-items: stretch;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.payment-filter-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr)) auto auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.payment-filter-controls label {
+  min-width: 0;
+}
+
+.payment-filter-controls select,
+.payment-filter-controls input {
+  width: 100%;
+  min-width: 0;
+}
+
+.payment-search-filter input {
+  width: 100%;
+}
+
+.filter-controls .payment-search-filter input {
+  min-width: 0;
+}
+
 .compact-button {
   min-height: 44px;
   padding: 10px 14px;
@@ -638,6 +674,14 @@ tbody tr:hover {
 
 .paid-button.edit:hover {
   background: #d97706;
+}
+
+.paid-button.neutral-action {
+  background: #475569;
+}
+
+.paid-button.neutral-action:hover {
+  background: #334155;
 }
 
 .paid-button.paid,
@@ -823,6 +867,79 @@ tbody tr:hover {
   accent-color: #2563eb;
 }
 
+.payment-detail-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+.payment-detail-list div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.payment-detail-list div:last-child {
+  border-bottom: none;
+}
+
+.payment-detail-list span {
+  color: #475569;
+  font-weight: 700;
+}
+
+.payment-detail-list strong {
+  color: #0f172a;
+  text-align: right;
+}
+
+.payment-detail-list strong small {
+  display: block;
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.payment-detail-list .payment-detail-total {
+  margin-bottom: 4px;
+  padding: 14px 16px;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  background: #eff6ff;
+}
+
+.payment-detail-list .payment-detail-total span,
+.payment-detail-list .payment-detail-total strong {
+  color: #1d4ed8;
+}
+
+.payment-detail-list .payment-check-section {
+  display: grid;
+  gap: 0;
+  margin-top: 6px;
+  padding: 14px 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.payment-detail-list .payment-check-section h3 {
+  margin: 0 0 8px;
+  color: #0f172a;
+  font-size: 0.95rem;
+}
+
+.payment-detail-list .payment-check-section div {
+  padding: 10px 0;
+}
+
+.payment-detail-list .payment-check-section div:last-child {
+  border-bottom: none;
+}
+
 .payment-form .form-field span {
   font-weight: 600;
   color: #334155;
@@ -988,6 +1105,14 @@ tbody tr:hover {
   .report-card.wide-card {
     grid-column: auto;
   }
+
+  .payment-filter-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .payment-filter-row .compact-button {
+    width: 100%;
+  }
 }
 
 @media (max-width: 680px) {
@@ -997,6 +1122,10 @@ tbody tr:hover {
 
   .view-header {
     padding: 18px;
+  }
+
+  .payment-filter-row {
+    grid-template-columns: 1fr;
   }
 
   .view-header h1 {

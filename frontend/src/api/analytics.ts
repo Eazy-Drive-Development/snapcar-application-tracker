@@ -14,6 +14,7 @@ type DayWiseData = {
 type VendorPayout = {
   paymentId: number;
   bookingId: number | null;
+  gatewayPaymentAmount: number | null;
   vendorId: number | null;
   userId: number | null;
   vendorName: string;
@@ -23,6 +24,7 @@ type VendorPayout = {
   amount: number;
   totalAmount: number;
   bookingStatus: string;
+  deliveryType: string;
   bookingStartDate: string | null;
   bookingEndDate: string | null;
   platformCharges: number;
