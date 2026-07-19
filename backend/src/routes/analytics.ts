@@ -90,11 +90,17 @@ type CashfreePaymentResponse = {
   };
 };
 
+let hasWarnedMissingCashfreeEnv = false;
+
 const getCashfreeHeaders = () => {
-  const clientId = process.env.CASHFREE_CLIENT_ID;
-  const clientSecret = process.env.CASHFREE_CLIENT_SECRET;
+  const clientId = process.env.CASHFREE_CLIENT_ID ?? process.env.CASHFREE_APP_ID;
+  const clientSecret = process.env.CASHFREE_CLIENT_SECRET ?? process.env.CASHFREE_SECRET_KEY;
 
   if (!clientId || !clientSecret) {
+    if (!hasWarnedMissingCashfreeEnv) {
+      console.warn('Cashfree payment lookup skipped: CASHFREE_CLIENT_ID/CASHFREE_CLIENT_SECRET env values are missing.');
+      hasWarnedMissingCashfreeEnv = true;
+    }
     return null;
   }
 
@@ -107,6 +113,7 @@ const getCashfreeHeaders = () => {
 
 const getCashfreeGatewayAmount = async (orderId: string | null, gatewayPaymentId: string | null) => {
   if (!orderId) {
+    console.warn('Cashfree payment lookup skipped: payment row has no gateway_order_id.');
     return null;
   }
 
@@ -115,31 +122,43 @@ const getCashfreeGatewayAmount = async (orderId: string | null, gatewayPaymentId
     return null;
   }
 
-  const baseUrl = process.env.CASHFREE_BASE_URL ?? 'https://api.cashfree.com/pg';
-  const response = await fetch(`${baseUrl}/orders/${encodeURIComponent(orderId)}/payments`, { headers });
+  try {
+    const baseUrl = process.env.CASHFREE_BASE_URL ?? 'https://api.cashfree.com/pg';
+    const response = await fetch(`${baseUrl}/orders/${encodeURIComponent(orderId)}/payments`, { headers });
 
-  if (!response.ok) {
-    console.warn(`Cashfree payment lookup failed for order ${orderId}: ${response.status}`);
+    if (!response.ok) {
+      const responseBody = await response.text().catch(() => '');
+      console.warn(`Cashfree payment lookup failed for order ${orderId}: ${response.status} ${responseBody.slice(0, 240)}`);
+      return null;
+    }
+
+    const payments = await response.json() as CashfreePaymentResponse[];
+    if (!Array.isArray(payments) || payments.length === 0) {
+      console.warn(`Cashfree payment lookup returned no payments for order ${orderId}.`);
+      return null;
+    }
+
+    const normalizedGatewayPaymentId = gatewayPaymentId ? String(gatewayPaymentId) : null;
+    const matchingPayment = normalizedGatewayPaymentId
+      ? payments.find((payment) => (
+          String(payment.cf_payment_id ?? '') === normalizedGatewayPaymentId ||
+          String(payment.payment_gateway_details?.gateway_payment_id ?? '') === normalizedGatewayPaymentId
+        ))
+      : null;
+    const successfulPayment = payments.find((payment) => payment.payment_status === 'SUCCESS');
+    const selectedPayment = matchingPayment ?? successfulPayment ?? payments[0];
+    const parsedAmount = Number(selectedPayment.payment_amount);
+
+    if (!Number.isFinite(parsedAmount)) {
+      console.warn(`Cashfree payment lookup found no numeric payment_amount for order ${orderId}.`);
+      return null;
+    }
+
+    return parsedAmount;
+  } catch (error) {
+    console.warn(`Cashfree payment lookup failed for order ${orderId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     return null;
   }
-
-  const payments = await response.json() as CashfreePaymentResponse[];
-  if (!Array.isArray(payments) || payments.length === 0) {
-    return null;
-  }
-
-  const normalizedGatewayPaymentId = gatewayPaymentId ? String(gatewayPaymentId) : null;
-  const matchingPayment = normalizedGatewayPaymentId
-    ? payments.find((payment) => (
-        String(payment.cf_payment_id ?? '') === normalizedGatewayPaymentId ||
-        String(payment.payment_gateway_details?.gateway_payment_id ?? '') === normalizedGatewayPaymentId
-      ))
-    : null;
-  const successfulPayment = payments.find((payment) => payment.payment_status === 'SUCCESS');
-  const selectedPayment = matchingPayment ?? successfulPayment ?? payments[0];
-  const parsedAmount = Number(selectedPayment.payment_amount);
-
-  return Number.isFinite(parsedAmount) ? parsedAmount : null;
 };
 
 router.get('/daily-bookings', wrapAsync(async (req: Request, res: Response) => {
